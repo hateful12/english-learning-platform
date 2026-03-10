@@ -7,7 +7,19 @@ import { PaymentEditor } from "./PaymentEditor";
 import { InviteSection } from "./InviteSection";
 
 type Student = { id: string; email: string; name: string | null };
-type Homework = { id: string; title: string; description: string; studentId?: string | null };
+type HomeworkResponse = {
+  id: string;
+  response: string;
+  submittedAt: string;
+  student?: { id: string; email: string; name: string | null };
+};
+type Homework = {
+  id: string;
+  title: string;
+  description: string;
+  studentId?: string | null;
+  responses?: HomeworkResponse[];
+};
 type LinkItem = { id: string; title: string; url: string; studentId?: string | null };
 type PaymentInfo = { id: string; content: string; amount: string | null; studentId?: string | null };
 

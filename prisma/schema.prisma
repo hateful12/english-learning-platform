@@ -8,33 +8,50 @@ datasource db {
 }
 
 model Student {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  name         String?
-  passwordHash String
-  createdAt    DateTime  @default(now())
-  homework     Homework[]
-  lessonLinks  LessonLink[]
-  miroLinks    MiroLink[]
-  paymentInfos PaymentInfo[]
+  id                String             @id @default(cuid())
+  email             String             @unique
+  name              String?
+  passwordHash      String
+  createdAt         DateTime           @default(now())
+  homework          Homework[]
+  lessonLinks       LessonLink[]
+  miroLinks         MiroLink[]
+  paymentInfos      PaymentInfo[]
+  invites           Invite[]
+  homeworkResponses HomeworkResponse[]
 }
 
 model Invite {
-  id        String    @id @default(cuid())
-  token     String    @unique
+  id        String   @id @default(cuid())
+  token     String   @unique
   expiresAt DateTime?
   usedAt    DateTime?
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
+  studentId String?
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
 }
 
 model Homework {
   id          String   @id @default(cuid())
   title       String
   description String
+  attachments String  @default("[]") // JSON array of { url, name, type }
   studentId   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   student     Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  responses   HomeworkResponse[]
+}
+
+model HomeworkResponse {
+  id         String   @id @default(cuid())
+  homeworkId String
+  studentId  String
+  response   String
+  submittedAt DateTime @default(now())
+  homework   Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  @@unique([homeworkId, studentId])
 }
 
 model LessonLink {

@@ -1,9 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 type Student = { id: string; email: string; name: string | null };
-type Item = { id: string; title: string; description: string; studentId?: string | null };
+export type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
+type ResponseItem = {
+  id: string;
+  response: string;
+  submittedAt: string;
+  student?: { id: string; email: string; name: string | null };
+};
+type Item = {
+  id: string;
+  title: string;
+  description: string;
+  studentId?: string | null;
+  attachments?: string;
+  responses?: ResponseItem[];
+};
 
 export function HomeworkEditor({
   items,
@@ -21,7 +35,44 @@ export function HomeworkEditor({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [studentId, setStudentId] = useState<string>("");
+  const [attachments, setAttachments] = useState<HomeworkAttachment[]>([]);
   const [editing, setEditing] = useState<Item | null>(null);
+  const [editingAttachments, setEditingAttachments] = useState<HomeworkAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  function parseAttachments(item: Item): HomeworkAttachment[] {
+    try {
+      const raw = item.attachments ?? "[]";
+      const arr = JSON.parse(typeof raw === "string" ? raw : "[]");
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function handleUpload(fileList: FileList | null, setTarget: React.Dispatch<React.SetStateAction<HomeworkAttachment[]>>) {
+    if (!fileList?.length) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(fileList)) {
+        const formData = new FormData();
+        formData.set("file", file);
+        const res = await fetch("/api/upload", { method: "POST", body: formData });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.error || "Upload failed");
+          continue;
+        }
+        const data = await res.json();
+        setTarget((prev) => [...prev, { url: data.url, name: data.name, type: data.type }]);
+      }
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -33,11 +84,13 @@ export function HomeworkEditor({
         title: title.trim(),
         description: description.trim(),
         studentId: studentId || null,
+        attachments,
       }),
     });
     setTitle("");
     setDescription("");
     setStudentId("");
+    setAttachments([]);
     onAdd();
   }
 
@@ -57,9 +110,11 @@ export function HomeworkEditor({
         title: editing.title,
         description: editing.description,
         studentId: editing.studentId ?? null,
+        attachments: editingAttachments,
       }),
     });
     setEditing(null);
+    setEditingAttachments([]);
     onUpdate();
   }
 
@@ -101,6 +156,34 @@ export function HomeworkEditor({
             className="input min-h-[80px] resize-y w-full"
             rows={2}
           />
+          <div className="space-y-1">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,audio/*,.zip,.rar,.7z,.gz"
+              multiple
+              className="hidden"
+              onChange={(e) => handleUpload(e.target.files, setAttachments)}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="text-sm text-accent hover:underline disabled:opacity-50"
+            >
+              {uploading ? "Uploading…" : "+ Add photo, audio or archive"}
+            </button>
+            {attachments.length > 0 && (
+              <ul className="flex flex-wrap gap-2 mt-1">
+                {attachments.map((a, i) => (
+                  <li key={a.url} className="flex items-center gap-1 rounded bg-ink/5 px-2 py-1 text-sm">
+                    <span className="text-ink/80 truncate max-w-[120px]">{a.name}</span>
+                    <button type="button" onClick={() => setAttachments((p) => p.filter((_, j) => j !== i))} className="text-red-600 hover:underline" aria-label="Remove">×</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
         <button type="submit" className="btn-primary shrink-0">
           Add homework
@@ -123,6 +206,34 @@ export function HomeworkEditor({
                   className="input min-h-[60px] resize-y"
                   rows={2}
                 />
+                <div className="space-y-1">
+                  <input
+                    ref={editFileInputRef}
+                    type="file"
+                    accept="image/*,audio/*,.zip,.rar,.7z,.gz"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleUpload(e.target.files, setEditingAttachments)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => editFileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="text-sm text-accent hover:underline disabled:opacity-50"
+                  >
+                    {uploading ? "Uploading…" : "+ Add photo, audio or archive"}
+                  </button>
+                  {editingAttachments.length > 0 && (
+                    <ul className="flex flex-wrap gap-2 mt-1">
+                      {editingAttachments.map((a, i) => (
+                        <li key={a.url} className="flex items-center gap-1 rounded bg-ink/5 px-2 py-1 text-sm">
+                          <span className="text-ink/80 truncate max-w-[120px]">{a.name}</span>
+                          <button type="button" onClick={() => setEditingAttachments((p) => p.filter((_, j) => j !== i))} className="text-red-600 hover:underline" aria-label="Remove">×</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 {students.length > 0 && (
                   <select
                     value={editing.studentId ?? ""}
@@ -137,7 +248,7 @@ export function HomeworkEditor({
                 )}
                 <div className="flex gap-2">
                   <button type="submit" className="btn-primary">Save</button>
-                  <button type="button" onClick={() => setEditing(null)} className="btn-secondary">Cancel</button>
+                  <button type="button" onClick={() => { setEditing(null); setEditingAttachments([]); }} className="btn-secondary">Cancel</button>
                 </div>
               </form>
             ) : (
@@ -151,9 +262,41 @@ export function HomeworkEditor({
                     {item.description && (
                       <p className="mt-1 whitespace-pre-wrap text-sm text-ink/70">{item.description}</p>
                     )}
+                    {parseAttachments(item).length > 0 && (
+                      <p className="mt-1 text-xs text-ink/50">
+                        Attachments: {parseAttachments(item).map((a) => a.name).join(", ")}
+                      </p>
+                    )}
+                    {item.responses && item.responses.length > 0 && (
+                      <div className="mt-3 rounded border border-ink/10 bg-ink/5 p-3 space-y-2">
+                        <p className="text-xs font-medium text-ink/70">Student responses</p>
+                        {item.responses.map((r) => (
+                          <div key={r.id} className="text-sm">
+                            {r.student && (
+                              <p className="text-ink/60 font-medium">
+                                {r.student.name || r.student.email}
+                                <span className="text-xs text-ink/50 ml-1">
+                                  {new Date(r.submittedAt).toLocaleString()}
+                                </span>
+                              </p>
+                            )}
+                            <p className="whitespace-pre-wrap text-ink/80 mt-0.5">{r.response || "—"}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex shrink-0 gap-1">
-                    <button type="button" onClick={() => setEditing(item)} className="btn-secondary text-sm">Edit</button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing(item);
+                        setEditingAttachments(parseAttachments(item));
+                      }}
+                      className="btn-secondary text-sm"
+                    >
+                      Edit
+                    </button>
                     <button type="button" onClick={() => handleDelete(item.id)} className="text-sm text-red-600 hover:underline">Delete</button>
                   </div>
                 </div>

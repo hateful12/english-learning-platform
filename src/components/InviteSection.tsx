@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from "react";
 
-type Invite = { id: string; token: string; usedAt: string | null; createdAt: string };
+type Invite = {
+  id: string;
+  token: string;
+  usedAt: string | null;
+  createdAt: string;
+  student?: { id: string; email: string; name: string | null } | null;
+};
 
 export function InviteSection() {
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -11,7 +17,7 @@ export function InviteSection() {
   const [copied, setCopied] = useState(false);
 
   function load() {
-    fetch("/api/invite")
+    fetch("/api/invite", { credentials: "include" })
       .then((r) => r.json())
       .then(setInvites)
       .catch(() => setInvites([]));
@@ -24,11 +30,13 @@ export function InviteSection() {
   async function createInvite() {
     setLoading(true);
     setLink(null);
-    const res = await fetch("/api/invite", { method: "POST" });
+    const res = await fetch("/api/invite", { method: "POST", credentials: "include" });
     const data = await res.json().catch(() => ({}));
     setLoading(false);
-    if (data.link) setLink(data.link);
-    load();
+    if (res.ok && data.link) {
+      setLink(data.link);
+      load();
+    }
   }
 
   function copyLink(url: string) {
@@ -73,7 +81,10 @@ export function InviteSection() {
             {invites.slice(0, 10).map((inv) => (
               <li key={inv.id} className="flex items-center justify-between gap-2">
                 <span className="truncate text-ink/70">
-                  …{inv.token.slice(-8)} — {inv.usedAt ? "Used" : "Unused"}
+                  …{inv.token.slice(-8)} —{" "}
+                  {inv.usedAt
+                    ? `Used by ${inv.student?.name || inv.student?.email || "unknown student"}`
+                    : "Unused"}
                 </span>
                 <button
                   type="button"

@@ -12,11 +12,18 @@ export async function PATCH(
   }
   const { id } = await params;
   const body = await _request.json();
+  const attachmentsJson =
+    body.attachments !== undefined
+      ? Array.isArray(body.attachments) && body.attachments.every((a: unknown) => a && typeof (a as { url?: string }).url === "string")
+        ? JSON.stringify(body.attachments)
+        : "[]"
+      : undefined;
   const item = await prisma.homework.update({
     where: { id },
     data: {
       title: body.title,
       description: body.description,
+      ...(attachmentsJson !== undefined && { attachments: attachmentsJson }),
       studentId: body.studentId !== undefined ? (body.studentId && typeof body.studentId === "string" ? body.studentId : null) : undefined,
     },
   });
