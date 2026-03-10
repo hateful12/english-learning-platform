@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  homework     Homework[]
+  lessonLinks  LessonLink[]
+  miroLinks    MiroLink[]
+  paymentInfos PaymentInfo[]
+}
+
+model Invite {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  expiresAt DateTime?
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Homework {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  studentId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  student     Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+}
+
+model LessonLink {
+  id        String   @id @default(cuid())
+  title     String
+  url       String
+  studentId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+}
+
+model MiroLink {
+  id        String   @id @default(cuid())
+  title     String
+  url       String
+  studentId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+}
+
+model PaymentInfo {
+  id        String   @id @default(cuid())
+  content   String
+  amount    String?
+  studentId String?
+  updatedAt DateTime @updatedAt
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+}
+
+model Teacher {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         String   @default("teacher") // "admin" can manage homeworks, links, payment
+  createdAt    DateTime @default(now())
+}
