@@ -10,7 +10,20 @@ export async function GET() {
   }
   const invites = await prisma.invite.findMany({
     orderBy: { createdAt: "desc" },
-    select: { id: true, token: true, usedAt: true, expiresAt: true, createdAt: true },
+    select: {
+      id: true,
+      token: true,
+      usedAt: true,
+      expiresAt: true,
+      createdAt: true,
+      student: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+        },
+      },
+    },
   });
   return NextResponse.json(invites);
 }

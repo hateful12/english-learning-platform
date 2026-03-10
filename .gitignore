@@ -14,6 +14,9 @@
 # production
 /build
 
+# uploads (homework attachments)
+/public/uploads
+
 # misc
 .DS_Store
 *.pem

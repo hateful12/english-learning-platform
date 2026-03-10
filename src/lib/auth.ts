@@ -23,6 +23,8 @@ export async function clearTeacherSession() {
   cookieStore.delete(TEACHER_COOKIE);
 }
 
+const TEACHER_ROLES = ["admin", "teacher"] as const;
+
 export async function isTeacherLoggedIn(): Promise<boolean> {
   const cookieStore = await cookies();
   const teacherId = cookieStore.get(TEACHER_COOKIE)?.value;
@@ -31,10 +33,10 @@ export async function isTeacherLoggedIn(): Promise<boolean> {
     where: { id: teacherId },
     select: { role: true },
   });
-  return teacher?.role === "admin";
+  return teacher != null && TEACHER_ROLES.includes(teacher.role as (typeof TEACHER_ROLES)[number]);
 }
 
-/** Returns teacher id if email+password match an admin teacher, null otherwise. */
+/** Returns teacher id if email+password match a teacher, null otherwise. */
 export async function verifyTeacherPassword(
   email: string,
   password: string
@@ -43,7 +45,7 @@ export async function verifyTeacherPassword(
     where: { email: email.trim().toLowerCase() },
     select: { id: true, passwordHash: true, role: true },
   });
-  if (!teacher || teacher.role !== "admin") return null;
+  if (!teacher || !TEACHER_ROLES.includes(teacher.role as (typeof TEACHER_ROLES)[number])) return null;
   const ok = await bcrypt.compare(password, teacher.passwordHash);
   return ok ? teacher.id : null;
 }
