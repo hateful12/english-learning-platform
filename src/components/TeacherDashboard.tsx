@@ -39,14 +39,22 @@ export function TeacherDashboard() {
       fetch("/api/lessons").then((r) => r.json()),
       fetch("/api/miro").then((r) => r.json()),
       fetch("/api/payment").then((r) => r.json()),
-    ]).then(([st, hw, les, m, pay]) => {
-      setStudents(Array.isArray(st) ? st : []);
-      setHomework(Array.isArray(hw) ? hw : []);
-      setLessons(Array.isArray(les) ? les : []);
-      setMiro(Array.isArray(m) ? m : []);
-      setPayments(Array.isArray(pay) ? pay : []);
-      setLoading(false);
-    });
+    ])
+      .then(([st, hw, les, m, pay]) => {
+        setStudents(Array.isArray(st) ? st : []);
+        setHomework(Array.isArray(hw) ? hw : []);
+        setLessons(Array.isArray(les) ? les : []);
+        setMiro(Array.isArray(m) ? m : []);
+        setPayments(Array.isArray(pay) ? pay : []);
+      })
+      .catch(() => {
+        setStudents([]);
+        setHomework([]);
+        setLessons([]);
+        setMiro([]);
+        setPayments([]);
+      })
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {

@@ -78,7 +78,8 @@ export function StudentDashboard() {
   function loadHomework() {
     return fetch("/api/homework")
       .then((r) => safeJson(r, []))
-      .then((data) => setHomework(Array.isArray(data) ? data : []));
+      .then((data) => setHomework(Array.isArray(data) ? data : []))
+      .catch(() => setHomework([]));
   }
 
   async function safeJson(res: Response, fallback: unknown) {
@@ -97,13 +98,20 @@ export function StudentDashboard() {
       fetch("/api/lessons").then((r) => safeJson(r, [])),
       fetch("/api/miro").then((r) => safeJson(r, [])),
       fetch("/api/payment").then((r) => safeJson(r, null)),
-    ]).then(([hw, les, m, pay]) => {
-      setHomework(Array.isArray(hw) ? hw : []);
-      setLessons(Array.isArray(les) ? les : []);
-      setMiro(Array.isArray(m) ? m : []);
-      setPayment(pay);
-      setLoading(false);
-    });
+    ])
+      .then(([hw, les, m, pay]) => {
+        setHomework(Array.isArray(hw) ? hw : []);
+        setLessons(Array.isArray(les) ? les : []);
+        setMiro(Array.isArray(m) ? m : []);
+        setPayment(pay);
+      })
+      .catch(() => {
+        setHomework([]);
+        setLessons([]);
+        setMiro([]);
+        setPayment(null);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   async function submitResponse(homeworkId: string, response: string) {
