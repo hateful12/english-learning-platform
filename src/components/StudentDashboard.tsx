@@ -7,6 +7,9 @@ type HomeworkResponse = {
   id: string;
   response: string;
   submittedAt: string;
+  teacherFeedback?: string | null;
+  teacherFeedbackAttachments?: string;
+  feedbackAt?: string | null;
 };
 type Homework = {
   id: string;
@@ -25,6 +28,50 @@ function parseAttachments(item: Homework): HomeworkAttachment[] {
   } catch {
     return [];
   }
+}
+
+function parseFeedbackAttachments(raw: string | undefined): HomeworkAttachment[] {
+  try {
+    const arr = JSON.parse(typeof raw === "string" ? raw : "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function TeacherFeedbackDisplay({
+  feedback,
+  attachments,
+  feedbackAt,
+}: {
+  feedback: string | null;
+  attachments: string | undefined;
+  feedbackAt: string | null;
+}) {
+  const items = parseFeedbackAttachments(attachments);
+  return (
+    <div className="mt-3 rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-accent/80 uppercase tracking-wide">Teacher feedback</p>
+        {feedbackAt && (
+          <p className="text-xs text-ink/40">{new Date(feedbackAt).toLocaleString()}</p>
+        )}
+      </div>
+      {feedback && (
+        <p className="text-sm text-ink/80 whitespace-pre-wrap">{feedback}</p>
+      )}
+      {items.map((a) => (
+        <div key={a.url}>
+          {a.type === "audio" && (
+            <div>
+              <p className="text-xs text-ink/50 mb-1">{a.name}</p>
+              <audio src={a.url} controls className="w-full max-w-md" />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function HomeworkSubmit({
@@ -185,6 +232,13 @@ export function StudentDashboard() {
                     submitting={submittingId === item.id}
                     onSubmit={submitResponse}
                   />
+                  {myResponse && (myResponse.teacherFeedback || (myResponse.teacherFeedbackAttachments && myResponse.teacherFeedbackAttachments !== "[]")) && (
+                    <TeacherFeedbackDisplay
+                      feedback={myResponse.teacherFeedback ?? null}
+                      attachments={myResponse.teacherFeedbackAttachments}
+                      feedbackAt={myResponse.feedbackAt ?? null}
+                    />
+                  )}
                 </li>
               );
             })}

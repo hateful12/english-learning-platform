@@ -18,7 +18,15 @@ export async function GET() {
       },
     });
     type Row = (typeof items)[number] & {
-      responses?: Array<{ id: string; response: string; submittedAt: Date; student?: { id: string; email: string; name: string | null } }>;
+      responses?: Array<{
+        id: string;
+        response: string;
+        submittedAt: Date;
+        teacherFeedback?: string | null;
+        teacherFeedbackAttachments?: string;
+        feedbackAt?: Date | null;
+        student?: { id: string; email: string; name: string | null };
+      }>;
     };
     const serialized = (items as Row[]).map((item) => {
       const { responses, ...rest } = item;
@@ -26,11 +34,15 @@ export async function GET() {
         ...rest,
         responses:
           responses && Array.isArray(responses)
-            ? responses.map((r) =>
-                r.student
-                  ? { id: r.id, response: r.response, submittedAt: r.submittedAt, student: r.student }
-                  : { id: r.id, response: r.response, submittedAt: r.submittedAt }
-              )
+            ? responses.map((r) => ({
+                id: r.id,
+                response: r.response,
+                submittedAt: r.submittedAt,
+                teacherFeedback: r.teacherFeedback ?? null,
+                teacherFeedbackAttachments: r.teacherFeedbackAttachments ?? "[]",
+                feedbackAt: r.feedbackAt ?? null,
+                ...(r.student ? { student: r.student } : {}),
+              }))
             : [],
       };
     });

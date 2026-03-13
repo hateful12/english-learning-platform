@@ -44,13 +44,16 @@ model Homework {
 }
 
 model HomeworkResponse {
-  id         String   @id @default(cuid())
-  homeworkId String
-  studentId  String
-  response   String
-  submittedAt DateTime @default(now())
-  homework   Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
-  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id                         String    @id @default(cuid())
+  homeworkId                 String
+  studentId                  String
+  response                   String
+  submittedAt                DateTime  @default(now())
+  teacherFeedback            String?
+  teacherFeedbackAttachments String    @default("[]") // JSON array of { url, name, type }
+  feedbackAt                 DateTime?
+  homework                   Homework  @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  student                    Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   @@unique([homeworkId, studentId])
 }
 
