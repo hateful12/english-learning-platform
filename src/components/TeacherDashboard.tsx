@@ -21,6 +21,7 @@ type Homework = {
   studentId?: string | null;
   groupId?: string | null;
   group?: { id: string; name: string } | null;
+  closedForStudents?: string[];
   responses?: HomeworkResponse[];
 };
 type LinkItem = { id: string; title: string; url: string; studentId?: string | null };

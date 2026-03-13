@@ -53,13 +53,18 @@ export async function GET() {
       },
     });
 
-    // Get groupId + group name for all returned homework via raw SQL
+    // Get groupId + group name + per-student close info for all returned homework via raw SQL
     const idList = items.map((i) => i.id);
     type GroupInfoRow = { id: string; groupId: string | null; groupName: string | null };
     let groupInfoMap = new Map<string, { groupId: string | null; groupName: string | null }>();
+    // Teacher: map of homeworkId → array of closed studentIds
+    let closedForStudentsMap = new Map<string, string[]>();
+    // Student: set of homeworkIds individually closed for this student
+    let studentClosedSet = new Set<string>();
 
     if (idList.length > 0) {
       const placeholders = idList.map(() => "?").join(", ");
+
       const groupInfoRows = await prisma.$queryRawUnsafe<GroupInfoRow[]>(
         `SELECT h.id, h.groupId, g.name AS groupName
          FROM "Homework" h
@@ -69,6 +74,26 @@ export async function GET() {
       );
       for (const row of groupInfoRows) {
         groupInfoMap.set(row.id, { groupId: row.groupId, groupName: row.groupName });
+      }
+
+      if (teacher) {
+        // Fetch per-student close records so teacher can see who's closed
+        const closeRows = await prisma.$queryRawUnsafe<Array<{ homeworkId: string; studentId: string }>>(
+          `SELECT homeworkId, studentId FROM "HomeworkStudentClose" WHERE homeworkId IN (${placeholders})`,
+          ...idList
+        );
+        for (const row of closeRows) {
+          if (!closedForStudentsMap.has(row.homeworkId)) closedForStudentsMap.set(row.homeworkId, []);
+          closedForStudentsMap.get(row.homeworkId)!.push(row.studentId);
+        }
+      } else if (studentId) {
+        // Fetch which of these homeworks are individually closed for this student
+        const closeRows = await prisma.$queryRawUnsafe<Array<{ homeworkId: string }>>(
+          `SELECT homeworkId FROM "HomeworkStudentClose" WHERE studentId = ? AND homeworkId IN (${placeholders})`,
+          studentId,
+          ...idList
+        );
+        studentClosedSet = new Set(closeRows.map((r) => r.homeworkId));
       }
     }
 
@@ -91,6 +116,10 @@ export async function GET() {
         ...rest,
         groupId: gInfo?.groupId ?? null,
         group: gInfo?.groupId && gInfo?.groupName ? { id: gInfo.groupId, name: gInfo.groupName } : null,
+        // Teacher sees which students have this closed individually
+        closedForStudents: teacher ? (closedForStudentsMap.get(item.id) ?? []) : undefined,
+        // Student sees whether this homework is individually closed for them
+        studentClosed: !teacher ? studentClosedSet.has(item.id) : undefined,
         responses:
           responses && Array.isArray(responses)
             ? responses.map((r) => ({

@@ -16,6 +16,7 @@ type Homework = {
   title: string;
   description: string;
   status?: string;
+  studentClosed?: boolean;
   attachments?: string;
   createdAt: string;
   updatedAt?: string;
@@ -191,8 +192,8 @@ export function StudentDashboard() {
           Homework
         </h2>
         {(() => {
-          const active = homework.filter((h) => h.status !== "closed");
-          const closed = homework.filter((h) => h.status === "closed");
+          const active = homework.filter((h) => h.status !== "closed" && !h.studentClosed);
+          const closed = homework.filter((h) => h.status === "closed" || h.studentClosed);
 
           function HomeworkItem({ item, readOnly }: { item: Homework; readOnly?: boolean }) {
             const attachments = parseAttachments(item);

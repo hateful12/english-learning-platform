@@ -25,6 +25,7 @@ type Item = {
   attachments?: string;
   updatedAt?: string;
   responses?: ResponseItem[];
+  closedForStudents?: string[];
 };
 
 function parseAttachmentList(raw: string | undefined): HomeworkAttachment[] {
@@ -311,6 +312,27 @@ export function HomeworkEditor({
   onDelete: () => void;
   onUpdate: () => void;
 }) {
+  const [closingId, setClosingId] = useState<string | null>(null);
+
+  async function handleStudentClose(homeworkId: string, studentId: string, close: boolean) {
+    setClosingId(`${homeworkId}:${studentId}`);
+    try {
+      const res = await fetch(`/api/homework/${homeworkId}/student-close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId, close }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Failed to update close status");
+        return;
+      }
+      onUpdate();
+    } finally {
+      setClosingId(null);
+    }
+  }
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assignment, setAssignment] = useState<string>("");
@@ -588,53 +610,145 @@ export function HomeworkEditor({
                       </p>
                     )}
 
-                    {item.responses && item.responses.length > 0 && (
-                      <div className="mt-3 rounded border border-ink/10 bg-ink/5 p-3 space-y-3">
-                        <p className="text-xs font-semibold text-ink/60 uppercase tracking-wide">Student responses</p>
-                        {item.responses.map((r) => {
-                          const feedbackAttachments = parseAttachmentList(r.teacherFeedbackAttachments);
-                          return (
-                            <div key={r.id} className="space-y-1">
-                              {r.student && (
-                                <p className="text-sm text-ink/60 font-medium">
-                                  {r.student.name || r.student.email}
-                                  <span className="text-xs text-ink/40 ml-1">
-                                    {new Date(r.submittedAt).toLocaleString()}
-                                  </span>
-                                </p>
-                              )}
-                              <p className="whitespace-pre-wrap text-sm text-ink/80">{r.response || "—"}</p>
+                    {(() => {
+                      const groupMembers = item.groupId
+                        ? (groups.find((g) => g.id === item.groupId)?.students ?? [])
+                        : [];
 
-                              {(r.teacherFeedback || feedbackAttachments.length > 0) && (
-                                <div className="mt-1 rounded border border-accent/15 bg-accent/5 px-2 py-1.5 space-y-1">
-                                  <p className="text-xs font-medium text-accent/70">Your feedback</p>
-                                  {r.teacherFeedback && (
-                                    <p className="text-xs text-ink/70 whitespace-pre-wrap">{r.teacherFeedback}</p>
-                                  )}
-                                  {feedbackAttachments.map((a) => (
-                                    <div key={a.url} className="mt-1">
-                                      {a.type === "audio" && (
-                                        <div>
-                                          <p className="text-xs text-ink/50 mb-0.5">{a.name}</p>
-                                          <audio src={a.url} controls className="h-8 w-full max-w-sm" />
-                                        </div>
+                      if (groupMembers.length > 0) {
+                        // Group homework: show ALL members with per-student close buttons
+                        return (
+                          <div className="mt-3 rounded border border-ink/10 bg-ink/5 p-3 space-y-3">
+                            <p className="text-xs font-semibold text-ink/60 uppercase tracking-wide">Group members</p>
+                            {groupMembers.map((member) => {
+                              const response = item.responses?.find((r) => r.student?.id === member.id);
+                              const isClosed = (item.closedForStudents ?? []).includes(member.id);
+                              const loadingKey = `${item.id}:${member.id}`;
+                              const feedbackAttachments = parseAttachmentList(response?.teacherFeedbackAttachments);
+                              return (
+                                <div
+                                  key={member.id}
+                                  className={`rounded-md border p-2.5 space-y-1 transition-opacity ${
+                                    isClosed ? "border-green-200 bg-green-50/50 opacity-60" : "border-ink/10 bg-white"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <p className="text-sm font-medium text-ink truncate">
+                                        {member.name || member.email}
+                                      </p>
+                                      {isClosed && (
+                                        <span className="text-xs text-green-700 font-medium shrink-0">✓ Done</span>
+                                      )}
+                                      {response && !isClosed && (
+                                        <span className="text-xs text-ink/40 shrink-0">
+                                          {new Date(response.submittedAt).toLocaleString()}
+                                        </span>
                                       )}
                                     </div>
-                                  ))}
-                                </div>
-                              )}
+                                    <button
+                                      type="button"
+                                      disabled={closingId === loadingKey}
+                                      onClick={() => handleStudentClose(item.id, member.id, !isClosed)}
+                                      className={`shrink-0 text-xs rounded px-2 py-0.5 transition-colors disabled:opacity-50 ${
+                                        isClosed
+                                          ? "text-ink/50 hover:text-ink/80 bg-ink/5 hover:bg-ink/10"
+                                          : "text-green-700 hover:text-green-800 bg-green-50 hover:bg-green-100"
+                                      }`}
+                                    >
+                                      {closingId === loadingKey ? "…" : isClosed ? "Reopen" : "Close"}
+                                    </button>
+                                  </div>
 
-                              <FeedbackForm
-                                responseId={r.id}
-                                initialFeedback={r.teacherFeedback}
-                                initialAttachments={feedbackAttachments}
-                                onSaved={onUpdate}
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                                  {response ? (
+                                    <>
+                                      <p className="whitespace-pre-wrap text-sm text-ink/80">{response.response || "—"}</p>
+                                      {(response.teacherFeedback || feedbackAttachments.length > 0) && (
+                                        <div className="mt-1 rounded border border-accent/15 bg-accent/5 px-2 py-1.5 space-y-1">
+                                          <p className="text-xs font-medium text-accent/70">Your feedback</p>
+                                          {response.teacherFeedback && (
+                                            <p className="text-xs text-ink/70 whitespace-pre-wrap">{response.teacherFeedback}</p>
+                                          )}
+                                          {feedbackAttachments.map((a) => (
+                                            <div key={a.url} className="mt-1">
+                                              {a.type === "audio" && (
+                                                <div>
+                                                  <p className="text-xs text-ink/50 mb-0.5">{a.name}</p>
+                                                  <audio src={a.url} controls className="h-8 w-full max-w-sm" />
+                                                </div>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <FeedbackForm
+                                        responseId={response.id}
+                                        initialFeedback={response.teacherFeedback}
+                                        initialAttachments={feedbackAttachments}
+                                        onSaved={onUpdate}
+                                      />
+                                    </>
+                                  ) : (
+                                    <p className="text-xs text-ink/40 italic">No response yet</p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      }
+
+                      if (item.responses && item.responses.length > 0) {
+                        // Non-group homework: original responses display
+                        return (
+                          <div className="mt-3 rounded border border-ink/10 bg-ink/5 p-3 space-y-3">
+                            <p className="text-xs font-semibold text-ink/60 uppercase tracking-wide">Student responses</p>
+                            {item.responses.map((r) => {
+                              const feedbackAttachments = parseAttachmentList(r.teacherFeedbackAttachments);
+                              return (
+                                <div key={r.id} className="space-y-1">
+                                  {r.student && (
+                                    <p className="text-sm text-ink/60 font-medium">
+                                      {r.student.name || r.student.email}
+                                      <span className="text-xs text-ink/40 ml-1">
+                                        {new Date(r.submittedAt).toLocaleString()}
+                                      </span>
+                                    </p>
+                                  )}
+                                  <p className="whitespace-pre-wrap text-sm text-ink/80">{r.response || "—"}</p>
+                                  {(r.teacherFeedback || feedbackAttachments.length > 0) && (
+                                    <div className="mt-1 rounded border border-accent/15 bg-accent/5 px-2 py-1.5 space-y-1">
+                                      <p className="text-xs font-medium text-accent/70">Your feedback</p>
+                                      {r.teacherFeedback && (
+                                        <p className="text-xs text-ink/70 whitespace-pre-wrap">{r.teacherFeedback}</p>
+                                      )}
+                                      {feedbackAttachments.map((a) => (
+                                        <div key={a.url} className="mt-1">
+                                          {a.type === "audio" && (
+                                            <div>
+                                              <p className="text-xs text-ink/50 mb-0.5">{a.name}</p>
+                                              <audio src={a.url} controls className="h-8 w-full max-w-sm" />
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <FeedbackForm
+                                    responseId={r.id}
+                                    initialFeedback={r.teacherFeedback}
+                                    initialAttachments={feedbackAttachments}
+                                    onSaved={onUpdate}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      }
+
+                      return null;
+                    })()}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <button

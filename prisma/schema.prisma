@@ -113,3 +113,11 @@ model StudentGroup {
   group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
   @@id([studentId, groupId])
 }
+
+// Tracks teacher closing a group homework for an individual student
+model HomeworkStudentClose {
+  homeworkId String
+  studentId  String
+  closedAt   DateTime @default(now())
+  @@id([homeworkId, studentId])
+}
