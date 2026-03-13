@@ -6,17 +6,45 @@ export async function GET() {
   try {
     const teacher = await isTeacherLoggedIn();
     const studentId = teacher ? null : await getStudentId();
+
+    let whereClause: Record<string, unknown> | undefined = undefined;
+    if (!teacher) {
+      if (studentId) {
+        // Find all groups the student belongs to
+        const studentGroups = await prisma.studentGroup.findMany({
+          where: { studentId },
+          select: { groupId: true },
+        });
+        const groupIds = studentGroups.map((sg) => sg.groupId);
+        whereClause = {
+          OR: [
+            { studentId: null, groupId: null },
+            { studentId },
+            ...(groupIds.length > 0 ? [{ groupId: { in: groupIds } }] : []),
+          ],
+        };
+      } else {
+        whereClause = { studentId: null, groupId: null };
+      }
+    }
+
     const items = await prisma.homework.findMany({
-      where: teacher ? undefined : studentId ? { OR: [{ studentId: null }, { studentId }] } : { studentId: null },
+      where: whereClause,
       orderBy: { createdAt: "desc" },
       include: {
         ...(teacher
-          ? { responses: { include: { student: { select: { id: true, email: true, name: true } } } } }
+          ? {
+              responses: {
+                include: { student: { select: { id: true, email: true, name: true } } },
+              },
+              group: { select: { id: true, name: true } },
+            }
           : studentId
             ? { responses: { where: { studentId } } }
             : {}),
       },
     });
+
     type Row = (typeof items)[number] & {
       responses?: Array<{
         id: string;
@@ -27,11 +55,14 @@ export async function GET() {
         feedbackAt?: Date | null;
         student?: { id: string; email: string; name: string | null };
       }>;
+      group?: { id: string; name: string } | null;
     };
+
     const serialized = (items as Row[]).map((item) => {
-      const { responses, ...rest } = item;
+      const { responses, group, ...rest } = item;
       return {
         ...rest,
+        group: group ?? null,
         responses:
           responses && Array.isArray(responses)
             ? responses.map((r) => ({
@@ -46,6 +77,7 @@ export async function GET() {
             : [],
       };
     });
+
     return NextResponse.json(serialized);
   } catch (err) {
     console.error("GET /api/homework error:", err);
@@ -69,7 +101,7 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const { title, description, studentId, attachments } = (body as Record<string, unknown>) ?? {};
+    const { title, description, studentId, groupId, attachments } = (body as Record<string, unknown>) ?? {};
     if (!title || typeof title !== "string") {
       return NextResponse.json({ error: "Title required" }, { status: 400 });
     }
@@ -83,6 +115,7 @@ export async function POST(request: NextRequest) {
         description: (description as string) ?? "",
         attachments: attachmentsJson,
         studentId: studentId && typeof studentId === "string" ? studentId : null,
+        groupId: groupId && typeof groupId === "string" ? groupId : null,
       },
     });
     return NextResponse.json(item);

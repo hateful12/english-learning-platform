@@ -19,6 +19,7 @@ model Student {
   paymentInfos      PaymentInfo[]
   invites           Invite[]
   homeworkResponses HomeworkResponse[]
+  groups            StudentGroup[]
 }
 
 model Invite {
@@ -38,9 +39,11 @@ model Homework {
   attachments String   @default("[]") // JSON array of { url, name, type }
   status      String   @default("active") // "active" | "closed"
   studentId   String?
+  groupId     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   student     Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  group       Group?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
   responses   HomeworkResponse[]
 }
 
@@ -93,4 +96,20 @@ model Teacher {
   passwordHash String
   role         String   @default("teacher") // "admin" can manage homeworks, links, payment
   createdAt    DateTime @default(now())
+}
+
+model Group {
+  id        String         @id @default(cuid())
+  name      String
+  createdAt DateTime       @default(now())
+  students  StudentGroup[]
+  homework  Homework[]
+}
+
+model StudentGroup {
+  studentId String
+  groupId   String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  @@id([studentId, groupId])
 }

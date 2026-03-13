@@ -25,6 +25,7 @@ export async function PATCH(
       description: body.description,
       ...(attachmentsJson !== undefined && { attachments: attachmentsJson }),
       studentId: body.studentId !== undefined ? (body.studentId && typeof body.studentId === "string" ? body.studentId : null) : undefined,
+      groupId: body.groupId !== undefined ? (body.groupId && typeof body.groupId === "string" ? body.groupId : null) : undefined,
       ...(body.status === "active" || body.status === "closed" ? { status: body.status } : {}),
     },
   });

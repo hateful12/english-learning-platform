@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { Group } from "./GroupEditor";
 
 type Student = { id: string; email: string; name: string | null };
 export type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
@@ -19,6 +20,8 @@ type Item = {
   description: string;
   status?: string;
   studentId?: string | null;
+  groupId?: string | null;
+  group?: { id: string; name: string } | null;
   attachments?: string;
   updatedAt?: string;
   responses?: ResponseItem[];
@@ -278,32 +281,53 @@ function FeedbackForm({
   );
 }
 
+// ---------- Assignment selector value format ----------
+// "" = all students, "s:<id>" = individual student, "g:<id>" = group
+function encodeAssignment(studentId: string | null | undefined, groupId: string | null | undefined): string {
+  if (groupId) return `g:${groupId}`;
+  if (studentId) return `s:${studentId}`;
+  return "";
+}
+
+function decodeAssignment(value: string): { studentId: string | null; groupId: string | null } {
+  if (value.startsWith("g:")) return { studentId: null, groupId: value.slice(2) };
+  if (value.startsWith("s:")) return { studentId: value.slice(2), groupId: null };
+  return { studentId: null, groupId: null };
+}
+
 // ---------- Main Component ----------
 export function HomeworkEditor({
   items,
   students = [],
+  groups = [],
   onAdd,
   onDelete,
   onUpdate,
 }: {
   items: Item[];
   students?: Student[];
+  groups?: Group[];
   onAdd: () => void;
   onDelete: () => void;
   onUpdate: () => void;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [studentId, setStudentId] = useState<string>("");
+  const [assignment, setAssignment] = useState<string>("");
   const [attachments, setAttachments] = useState<HomeworkAttachment[]>([]);
   const [editing, setEditing] = useState<Item | null>(null);
   const [editingAttachments, setEditingAttachments] = useState<HomeworkAttachment[]>([]);
+  const [editingAssignment, setEditingAssignment] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveGroup, setArchiveGroup] = useState<string>("");
   const [archiveMonth, setArchiveMonth] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Students who are NOT in any group — shown in the individual student section
+  const groupedStudentIds = new Set(groups.flatMap((g) => g.students.map((s) => s.id)));
+  const ungroupedStudents = students.filter((s) => !groupedStudentIds.has(s.id));
 
   function parseAttachments(item: Item): HomeworkAttachment[] {
     return parseAttachmentList(item.attachments);
@@ -334,19 +358,21 @@ export function HomeworkEditor({
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
+    const { studentId, groupId } = decodeAssignment(assignment);
     await fetch("/api/homework", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: title.trim(),
         description: description.trim(),
-        studentId: studentId || null,
+        studentId,
+        groupId,
         attachments,
       }),
     });
     setTitle("");
     setDescription("");
-    setStudentId("");
+    setAssignment("");
     setAttachments([]);
     onAdd();
   }
@@ -370,25 +396,68 @@ export function HomeworkEditor({
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
+    const { studentId, groupId } = decodeAssignment(editingAssignment);
     await fetch(`/api/homework/${editing.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: editing.title,
         description: editing.description,
-        studentId: editing.studentId ?? null,
+        studentId,
+        groupId,
         attachments: editingAttachments,
       }),
     });
     setEditing(null);
     setEditingAttachments([]);
+    setEditingAssignment("");
     onUpdate();
   }
 
-  function studentLabel(id: string | null | undefined) {
-    if (!id) return "All students";
-    const s = students.find((x) => x.id === id);
-    return s ? s.name || s.email : id;
+  function assignmentLabel(item: Item) {
+    if (item.groupId) {
+      const g = groups.find((x) => x.id === item.groupId);
+      return g ? `Group: ${g.name}` : (item.group ? `Group: ${item.group.name}` : "Group");
+    }
+    if (!item.studentId) return "All students";
+    const s = students.find((x) => x.id === item.studentId);
+    return s ? s.name || s.email : item.studentId;
+  }
+
+  function AssignmentSelect({
+    value,
+    onChange,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+  }) {
+    return (
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="input w-auto max-w-[220px]"
+      >
+        <option value="">All students</option>
+        {groups.length > 0 && (
+          <optgroup label="Groups">
+            {groups.map((g) => (
+              <option key={g.id} value={`g:${g.id}`}>
+                {g.name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {ungroupedStudents.length > 0 && (
+          <optgroup label="Individual students">
+            {ungroupedStudents.map((s) => (
+              <option key={s.id} value={`s:${s.id}`}>
+                {s.name || s.email}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </select>
+    );
   }
 
   return (
@@ -403,18 +472,7 @@ export function HomeworkEditor({
               placeholder="Homework title"
               className="input flex-1 min-w-[180px]"
             />
-            <select
-              value={studentId}
-              onChange={(e) => setStudentId(e.target.value)}
-              className="input w-auto max-w-[200px]"
-            >
-              <option value="">All students</option>
-              {students.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name || s.email}
-                </option>
-              ))}
-            </select>
+            <AssignmentSelect value={assignment} onChange={setAssignment} />
           </div>
           <textarea
             value={description}
@@ -501,21 +559,10 @@ export function HomeworkEditor({
                     </ul>
                   )}
                 </div>
-                {students.length > 0 && (
-                  <select
-                    value={editing.studentId ?? ""}
-                    onChange={(e) => setEditing({ ...editing, studentId: e.target.value || null })}
-                    className="input w-auto"
-                  >
-                    <option value="">All students</option>
-                    {students.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name || s.email}</option>
-                    ))}
-                  </select>
-                )}
+                <AssignmentSelect value={editingAssignment} onChange={setEditingAssignment} />
                 <div className="flex gap-2">
                   <button type="submit" className="btn-primary">Save</button>
-                  <button type="button" onClick={() => { setEditing(null); setEditingAttachments([]); }} className="btn-secondary">Cancel</button>
+                  <button type="button" onClick={() => { setEditing(null); setEditingAttachments([]); setEditingAssignment(""); }} className="btn-secondary">Cancel</button>
                 </div>
               </form>
             ) : (
@@ -524,7 +571,13 @@ export function HomeworkEditor({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-medium text-ink">{item.title}</h3>
-                      <span className="text-xs text-ink/50">({studentLabel(item.studentId)})</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                        item.groupId
+                          ? "bg-accent/10 text-accent font-medium"
+                          : "text-ink/50"
+                      }`}>
+                        {assignmentLabel(item)}
+                      </span>
                     </div>
                     {item.description && (
                       <p className="mt-1 whitespace-pre-wrap text-sm text-ink/70">{item.description}</p>
@@ -552,7 +605,6 @@ export function HomeworkEditor({
                               )}
                               <p className="whitespace-pre-wrap text-sm text-ink/80">{r.response || "—"}</p>
 
-                              {/* Existing feedback preview */}
                               {(r.teacherFeedback || feedbackAttachments.length > 0) && (
                                 <div className="mt-1 rounded border border-accent/15 bg-accent/5 px-2 py-1.5 space-y-1">
                                   <p className="text-xs font-medium text-accent/70">Your feedback</p>
@@ -599,6 +651,7 @@ export function HomeworkEditor({
                       onClick={() => {
                         setEditing(item);
                         setEditingAttachments(parseAttachments(item));
+                        setEditingAssignment(encodeAssignment(item.studentId, item.groupId));
                       }}
                       className="btn-secondary text-sm"
                     >
@@ -617,7 +670,6 @@ export function HomeworkEditor({
         const closed = items.filter((i) => i.status === "closed");
         if (closed.length === 0) return null;
 
-        // Unique months from updatedAt, sorted descending
         const months = Array.from(
           new Set(closed.map((i) => (i.updatedAt ? i.updatedAt.slice(0, 7) : "")))
         ).filter(Boolean).sort((a, b) => b.localeCompare(a));
@@ -625,7 +677,7 @@ export function HomeworkEditor({
         const filtered = closed.filter((item) => {
           const groupOk =
             archiveGroup === "" ||
-            (archiveGroup === "__all__" ? !item.studentId : item.studentId === archiveGroup);
+            (archiveGroup === "__all__" ? !item.studentId && !item.groupId : item.studentId === archiveGroup || item.groupId === archiveGroup);
           const monthOk =
             archiveMonth === "" || (item.updatedAt ?? "").slice(0, 7) === archiveMonth;
           return groupOk && monthOk;
@@ -649,15 +701,17 @@ export function HomeworkEditor({
 
             {archiveOpen && (
               <div className="mt-3 rounded-lg border border-ink/5 bg-ink/[0.02] p-3 space-y-3">
-                {/* Filters */}
                 <div className="flex flex-wrap gap-2">
                   <select
                     value={archiveGroup}
                     onChange={(e) => setArchiveGroup(e.target.value)}
                     className="input text-sm py-1 w-auto"
                   >
-                    <option value="">All groups</option>
-                    <option value="__all__">All students</option>
+                    <option value="">All assignments</option>
+                    <option value="__all__">All students (unassigned)</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>{g.name} (group)</option>
+                    ))}
                     {students.map((s) => (
                       <option key={s.id} value={s.id}>{s.name || s.email}</option>
                     ))}
@@ -693,7 +747,7 @@ export function HomeworkEditor({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <h3 className="font-medium text-ink/60 line-through">{item.title}</h3>
-                              <span className="text-xs text-ink/40">({studentLabel(item.studentId)})</span>
+                              <span className="text-xs text-ink/40">({assignmentLabel(item)})</span>
                               {item.updatedAt && (
                                 <span className="text-xs text-ink/30">
                                   {new Date(item.updatedAt).toLocaleDateString()}
