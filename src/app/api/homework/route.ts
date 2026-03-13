@@ -12,10 +12,10 @@ export async function GET() {
     if (!teacher) {
       if (studentId) {
         // Find all groups the student belongs to via raw SQL
-        const groupRows = await prisma.$queryRaw<Array<{ groupId: string }>>`
-          SELECT groupId FROM "StudentGroup" WHERE studentId = ${studentId}
+        const groupRows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+          SELECT groupId AS groupId FROM "StudentGroup" WHERE studentId = ${studentId}
         `;
-        const groupIds = groupRows.map((r) => r.groupId);
+        const groupIds = groupRows.map((r) => (r.groupId ?? r.groupid) as string).filter(Boolean);
 
         // Build matching homework IDs: all-students OR individual OR group
         let rows: Array<{ id: string }>;
@@ -66,34 +66,44 @@ export async function GET() {
       const placeholders = idList.map(() => "?").join(", ");
 
       const groupInfoRows = await prisma.$queryRawUnsafe<GroupInfoRow[]>(
-        `SELECT h.id, h.groupId, g.name AS groupName
+        // Explicit aliases guard against SQLite returning column names in unexpected casing
+        `SELECT h.id AS id, h.groupId AS groupId, g.name AS groupName
          FROM "Homework" h
          LEFT JOIN "Group" g ON g.id = h.groupId
          WHERE h.id IN (${placeholders})`,
         ...idList
       );
       for (const row of groupInfoRows) {
-        groupInfoMap.set(row.id, { groupId: row.groupId, groupName: row.groupName });
+        // Defensive: handle both camelCase and lowercase column names from driver
+        const rawRow = row as Record<string, unknown>;
+        const groupId = (rawRow.groupId ?? rawRow.groupid ?? null) as string | null;
+        const groupName = (rawRow.groupName ?? rawRow.groupname ?? null) as string | null;
+        groupInfoMap.set(rawRow.id as string, { groupId, groupName });
       }
 
       if (teacher) {
         // Fetch per-student close records so teacher can see who's closed
-        const closeRows = await prisma.$queryRawUnsafe<Array<{ homeworkId: string; studentId: string }>>(
-          `SELECT homeworkId, studentId FROM "HomeworkStudentClose" WHERE homeworkId IN (${placeholders})`,
+        const closeRows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+          `SELECT homeworkId AS homeworkId, studentId AS studentId FROM "HomeworkStudentClose" WHERE homeworkId IN (${placeholders})`,
           ...idList
         );
         for (const row of closeRows) {
-          if (!closedForStudentsMap.has(row.homeworkId)) closedForStudentsMap.set(row.homeworkId, []);
-          closedForStudentsMap.get(row.homeworkId)!.push(row.studentId);
+          const hwId = (row.homeworkId ?? row.homeworkid) as string;
+          const stId = (row.studentId ?? row.studentid) as string;
+          if (!hwId || !stId) continue;
+          if (!closedForStudentsMap.has(hwId)) closedForStudentsMap.set(hwId, []);
+          closedForStudentsMap.get(hwId)!.push(stId);
         }
       } else if (studentId) {
         // Fetch which of these homeworks are individually closed for this student
-        const closeRows = await prisma.$queryRawUnsafe<Array<{ homeworkId: string }>>(
-          `SELECT homeworkId FROM "HomeworkStudentClose" WHERE studentId = ? AND homeworkId IN (${placeholders})`,
+        const closeRows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+          `SELECT homeworkId AS homeworkId FROM "HomeworkStudentClose" WHERE studentId = ? AND homeworkId IN (${placeholders})`,
           studentId,
           ...idList
         );
-        studentClosedSet = new Set(closeRows.map((r) => r.homeworkId));
+        studentClosedSet = new Set(
+          closeRows.map((r) => (r.homeworkId ?? r.homeworkid) as string).filter(Boolean)
+        );
       }
     }
 
@@ -112,10 +122,17 @@ export async function GET() {
     const serialized = (items as Row[]).map((item) => {
       const { responses, ...rest } = item;
       const gInfo = groupInfoMap.get(item.id);
+      // Prefer Prisma's own groupId (reliable once client is regenerated).
+      // Fall back to what the raw SQL returned in case the client is still stale.
+      const restAny = rest as Record<string, unknown>;
+      const groupId: string | null =
+        (restAny.groupId as string | null | undefined) ??
+        gInfo?.groupId ??
+        null;
       return {
         ...rest,
-        groupId: gInfo?.groupId ?? null,
-        group: gInfo?.groupId && gInfo?.groupName ? { id: gInfo.groupId, name: gInfo.groupName } : null,
+        groupId,
+        group: groupId && gInfo?.groupName ? { id: groupId, name: gInfo.groupName } : null,
         // Teacher sees which students have this closed individually
         closedForStudents: teacher ? (closedForStudentsMap.get(item.id) ?? []) : undefined,
         // Student sees whether this homework is individually closed for them
