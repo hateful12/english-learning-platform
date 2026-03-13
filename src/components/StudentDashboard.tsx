@@ -18,6 +18,7 @@ type Homework = {
   status?: string;
   attachments?: string;
   createdAt: string;
+  updatedAt?: string;
   responses?: HomeworkResponse[];
 };
 
@@ -123,6 +124,7 @@ export function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveMonth, setArchiveMonth] = useState<string>("");
 
   function loadHomework() {
     return fetch("/api/homework")
@@ -265,23 +267,67 @@ export function StudentDashboard() {
                 </ul>
               )}
 
-              {closed.length > 0 && (
-                <div className="mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setArchiveOpen((o) => !o)}
-                    className="flex items-center gap-2 text-sm font-medium text-ink/50 hover:text-ink/70 transition-colors"
-                  >
-                    <span className={`inline-block transition-transform ${archiveOpen ? "rotate-90" : ""}`}>▶</span>
-                    Archive ({closed.length})
-                  </button>
-                  {archiveOpen && (
-                    <ul className="mt-3 space-y-4 rounded-lg border border-ink/5 bg-ink/[0.02] p-4">
-                      {closed.map((item) => <HomeworkItem key={item.id} item={item} readOnly />)}
-                    </ul>
-                  )}
-                </div>
-              )}
+              {closed.length > 0 && (() => {
+                const months = Array.from(
+                  new Set(closed.map((i) => (i.updatedAt ? i.updatedAt.slice(0, 7) : "")))
+                ).filter(Boolean).sort((a, b) => b.localeCompare(a));
+
+                const filteredClosed = archiveMonth
+                  ? closed.filter((i) => (i.updatedAt ?? "").slice(0, 7) === archiveMonth)
+                  : closed;
+
+                function monthLabel(ym: string) {
+                  const [y, m] = ym.split("-");
+                  return new Date(Number(y), Number(m) - 1).toLocaleString("default", { month: "long", year: "numeric" });
+                }
+
+                return (
+                  <div className="mt-6">
+                    <button
+                      type="button"
+                      onClick={() => setArchiveOpen((o) => !o)}
+                      className="flex items-center gap-2 text-sm font-medium text-ink/50 hover:text-ink/70 transition-colors"
+                    >
+                      <span className={`inline-block transition-transform ${archiveOpen ? "rotate-90" : ""}`}>▶</span>
+                      Archive ({closed.length})
+                    </button>
+                    {archiveOpen && (
+                      <div className="mt-3 rounded-lg border border-ink/5 bg-ink/[0.02] p-4 space-y-3">
+                        {months.length > 1 && (
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={archiveMonth}
+                              onChange={(e) => setArchiveMonth(e.target.value)}
+                              className="input text-sm py-1 w-auto"
+                            >
+                              <option value="">All dates</option>
+                              {months.map((m) => (
+                                <option key={m} value={m}>{monthLabel(m)}</option>
+                              ))}
+                            </select>
+                            {archiveMonth && (
+                              <button
+                                type="button"
+                                onClick={() => setArchiveMonth("")}
+                                className="text-xs text-ink/40 hover:text-ink/70 underline"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {filteredClosed.length === 0 ? (
+                          <p className="text-sm text-ink/40">No archived homework for this period.</p>
+                        ) : (
+                          <ul className="space-y-4">
+                            {filteredClosed.map((item) => <HomeworkItem key={item.id} item={item} readOnly />)}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </>
           );
         })()}
