@@ -298,6 +298,7 @@ export function HomeworkEditor({
   const [editing, setEditing] = useState<Item | null>(null);
   const [editingAttachments, setEditingAttachments] = useState<HomeworkAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -608,6 +609,65 @@ export function HomeworkEditor({
           </li>
         ))}
       </ul>
+
+      {items.some((item) => item.status === "closed") && (
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => setArchiveOpen((o) => !o)}
+            className="flex items-center gap-2 text-sm font-medium text-ink/50 hover:text-ink/70 transition-colors"
+          >
+            <span className={`inline-block transition-transform ${archiveOpen ? "rotate-90" : ""}`}>▶</span>
+            Archive ({items.filter((i) => i.status === "closed").length})
+          </button>
+          {archiveOpen && (
+            <ul className="mt-3 space-y-3 rounded-lg border border-ink/5 bg-ink/[0.02] p-3">
+              {items.filter((item) => item.status === "closed").map((item) => (
+                <li key={item.id} className="flex flex-col gap-2 rounded-lg border border-ink/5 bg-white/60 p-3 opacity-70">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-medium text-ink/60 line-through">{item.title}</h3>
+                        <span className="text-xs text-ink/40">({studentLabel(item.studentId)})</span>
+                      </div>
+                      {item.description && (
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-ink/50">{item.description}</p>
+                      )}
+                      {item.responses && item.responses.length > 0 && (
+                        <div className="mt-2 rounded border border-ink/10 bg-ink/5 p-2 space-y-1">
+                          <p className="text-xs font-semibold text-ink/40 uppercase tracking-wide">Student responses</p>
+                          {item.responses.map((r) => (
+                            <div key={r.id} className="text-sm">
+                              {r.student && (
+                                <p className="text-ink/40 font-medium">
+                                  {r.student.name || r.student.email}
+                                  <span className="text-xs text-ink/30 ml-1">{new Date(r.submittedAt).toLocaleString()}</span>
+                                </p>
+                              )}
+                              <p className="whitespace-pre-wrap text-ink/50 mt-0.5">{r.response || "—"}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStatus(item)}
+                        title="Reopen"
+                        className="flex items-center gap-1 rounded px-2 py-1 text-sm text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+                      >
+                        ☑ <span className="hidden sm:inline">Reopen</span>
+                      </button>
+                      <button type="button" onClick={() => handleDelete(item.id)} className="text-sm text-red-400 hover:text-red-600 hover:underline">Delete</button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
