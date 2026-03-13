@@ -25,10 +25,20 @@ export async function PATCH(
       description: body.description,
       ...(attachmentsJson !== undefined && { attachments: attachmentsJson }),
       studentId: body.studentId !== undefined ? (body.studentId && typeof body.studentId === "string" ? body.studentId : null) : undefined,
-      groupId: body.groupId !== undefined ? (body.groupId && typeof body.groupId === "string" ? body.groupId : null) : undefined,
       ...(body.status === "active" || body.status === "closed" ? { status: body.status } : {}),
     },
   });
+
+  // Handle groupId via raw SQL since old Prisma client doesn't know this field
+  if (body.groupId !== undefined) {
+    const newGroupId = body.groupId && typeof body.groupId === "string" ? body.groupId : null;
+    if (newGroupId) {
+      await prisma.$executeRaw`UPDATE "Homework" SET groupId = ${newGroupId} WHERE id = ${id}`;
+    } else {
+      await prisma.$executeRaw`UPDATE "Homework" SET groupId = NULL WHERE id = ${id}`;
+    }
+  }
+
   return NextResponse.json(item);
 }
 
