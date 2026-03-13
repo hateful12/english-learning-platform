@@ -17,6 +17,7 @@ type Item = {
   id: string;
   title: string;
   description: string;
+  status?: string;
   studentId?: string | null;
   attachments?: string;
   responses?: ResponseItem[];
@@ -352,6 +353,16 @@ export function HomeworkEditor({
     onDelete();
   }
 
+  async function handleToggleStatus(item: Item) {
+    const newStatus = item.status === "closed" ? "active" : "closed";
+    await fetch(`/api/homework/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    onUpdate();
+  }
+
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
@@ -444,7 +455,7 @@ export function HomeworkEditor({
 
       <ul className="space-y-3">
         {items.map((item) => (
-          <li key={item.id} className="flex flex-col gap-2 rounded-lg border border-ink/10 bg-white p-3">
+          <li key={item.id} className={`flex flex-col gap-2 rounded-lg border p-3 transition-opacity ${item.status === "closed" ? "border-ink/5 bg-ink/[0.02] opacity-60" : "border-ink/10 bg-white"}`}>
             {editing?.id === item.id ? (
               <form onSubmit={handleUpdate} className="space-y-2">
                 <input
@@ -507,9 +518,12 @@ export function HomeworkEditor({
               <>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-medium text-ink">{item.title}</h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className={`font-medium ${item.status === "closed" ? "line-through text-ink/40" : "text-ink"}`}>{item.title}</h3>
                       <span className="text-xs text-ink/50">({studentLabel(item.studentId)})</span>
+                      {item.status === "closed" && (
+                        <span className="rounded-full bg-ink/10 px-2 py-0.5 text-xs text-ink/50">Closed</span>
+                      )}
                     </div>
                     {item.description && (
                       <p className="mt-1 whitespace-pre-wrap text-sm text-ink/70">{item.description}</p>
@@ -569,7 +583,20 @@ export function HomeworkEditor({
                       </div>
                     )}
                   </div>
-                  <div className="flex shrink-0 gap-1">
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleStatus(item)}
+                      title={item.status === "closed" ? "Reopen" : "Mark as done"}
+                      className={`flex items-center gap-1 rounded px-2 py-1 text-sm transition-colors ${
+                        item.status === "closed"
+                          ? "text-green-700 bg-green-50 hover:bg-green-100"
+                          : "text-ink/40 hover:text-green-600 hover:bg-green-50"
+                      }`}
+                    >
+                      {item.status === "closed" ? "☑" : "☐"}
+                      <span className="hidden sm:inline">{item.status === "closed" ? "Reopen" : "Done"}</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => {

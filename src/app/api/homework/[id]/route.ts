@@ -25,6 +25,7 @@ export async function PATCH(
       description: body.description,
       ...(attachmentsJson !== undefined && { attachments: attachmentsJson }),
       studentId: body.studentId !== undefined ? (body.studentId && typeof body.studentId === "string" ? body.studentId : null) : undefined,
+      ...(body.status === "active" || body.status === "closed" ? { status: body.status } : {}),
     },
   });
   return NextResponse.json(item);

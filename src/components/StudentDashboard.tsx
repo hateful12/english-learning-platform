@@ -15,6 +15,7 @@ type Homework = {
   id: string;
   title: string;
   description: string;
+  status?: string;
   attachments?: string;
   createdAt: string;
   responses?: HomeworkResponse[];
@@ -121,6 +122,7 @@ export function StudentDashboard() {
   const [payment, setPayment] = useState<PaymentInfo>(null);
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   function loadHomework() {
     return fetch("/api/homework")
@@ -186,64 +188,103 @@ export function StudentDashboard() {
         <h2 className="mb-4 font-serif text-xl font-semibold text-ink">
           Homework
         </h2>
-        {homework.length === 0 ? (
-          <p className="text-ink/50">No homework posted yet.</p>
-        ) : (
-          <ul className="space-y-4">
-            {homework.map((item) => {
-              const attachments = parseAttachments(item);
-              const myResponse = item.responses?.[0];
-              return (
-                <li key={item.id} className="border-b border-ink/5 pb-4 last:border-0 last:pb-0">
-                  <h3 className="font-medium text-ink">{item.title}</h3>
-                  {item.description && (
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-ink/70">
-                      {item.description}
-                    </p>
-                  )}
-                  {attachments.length > 0 && (
-                    <div className="mt-2 space-y-2">
-                      {attachments.map((a) => (
-                        <div key={a.url} className="rounded border border-ink/10 bg-ink/5 p-2">
-                          {a.type === "image" && (
-                            <a href={a.url} target="_blank" rel="noopener noreferrer" className="block">
-                              <img src={a.url} alt={a.name} className="max-h-48 rounded object-contain" />
-                              <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
-                            </a>
-                          )}
-                          {a.type === "audio" && (
-                            <div>
-                              <p className="text-xs text-ink/60 mb-1">{a.name}</p>
-                              <audio src={a.url} controls className="w-full max-w-md" />
-                            </div>
-                          )}
-                          {a.type === "archive" && (
-                            <a href={a.url} download={a.name} className="text-accent hover:underline flex items-center gap-1">
-                              <span className="text-ink/70">📦</span> {a.name}
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+        {(() => {
+          const active = homework.filter((h) => h.status !== "closed");
+          const closed = homework.filter((h) => h.status === "closed");
+
+          function HomeworkItem({ item, readOnly }: { item: Homework; readOnly?: boolean }) {
+            const attachments = parseAttachments(item);
+            const myResponse = item.responses?.[0];
+            return (
+              <li className="border-b border-ink/5 pb-4 last:border-0 last:pb-0">
+                <h3 className="font-medium text-ink">{item.title}</h3>
+                {item.description && (
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-ink/70">{item.description}</p>
+                )}
+                {attachments.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {attachments.map((a) => (
+                      <div key={a.url} className="rounded border border-ink/10 bg-ink/5 p-2">
+                        {a.type === "image" && (
+                          <a href={a.url} target="_blank" rel="noopener noreferrer" className="block">
+                            <img src={a.url} alt={a.name} className="max-h-48 rounded object-contain" />
+                            <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
+                          </a>
+                        )}
+                        {a.type === "audio" && (
+                          <div>
+                            <p className="text-xs text-ink/60 mb-1">{a.name}</p>
+                            <audio src={a.url} controls className="w-full max-w-md" />
+                          </div>
+                        )}
+                        {a.type === "archive" && (
+                          <a href={a.url} download={a.name} className="text-accent hover:underline flex items-center gap-1">
+                            <span className="text-ink/70">📦</span> {a.name}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!readOnly && (
                   <HomeworkSubmit
                     homeworkId={item.id}
                     initialResponse={myResponse?.response ?? ""}
                     submitting={submittingId === item.id}
                     onSubmit={submitResponse}
                   />
-                  {myResponse && (myResponse.teacherFeedback || (myResponse.teacherFeedbackAttachments && myResponse.teacherFeedbackAttachments !== "[]")) && (
-                    <TeacherFeedbackDisplay
-                      feedback={myResponse.teacherFeedback ?? null}
-                      attachments={myResponse.teacherFeedbackAttachments}
-                      feedbackAt={myResponse.feedbackAt ?? null}
-                    />
+                )}
+                {readOnly && myResponse?.response && (
+                  <div className="mt-3">
+                    <p className="text-xs font-medium text-ink/50 mb-1">Your response</p>
+                    <p className="whitespace-pre-wrap text-sm text-ink/70">{myResponse.response}</p>
+                  </div>
+                )}
+                {myResponse && (myResponse.teacherFeedback || (myResponse.teacherFeedbackAttachments && myResponse.teacherFeedbackAttachments !== "[]")) && (
+                  <TeacherFeedbackDisplay
+                    feedback={myResponse.teacherFeedback ?? null}
+                    attachments={myResponse.teacherFeedbackAttachments}
+                    feedbackAt={myResponse.feedbackAt ?? null}
+                  />
+                )}
+              </li>
+            );
+          }
+
+          return (
+            <>
+              {active.length === 0 && closed.length === 0 && (
+                <p className="text-ink/50">No homework posted yet.</p>
+              )}
+              {active.length === 0 && closed.length > 0 && (
+                <p className="text-ink/50">No active homework right now.</p>
+              )}
+              {active.length > 0 && (
+                <ul className="space-y-4">
+                  {active.map((item) => <HomeworkItem key={item.id} item={item} />)}
+                </ul>
+              )}
+
+              {closed.length > 0 && (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setArchiveOpen((o) => !o)}
+                    className="flex items-center gap-2 text-sm font-medium text-ink/50 hover:text-ink/70 transition-colors"
+                  >
+                    <span className={`inline-block transition-transform ${archiveOpen ? "rotate-90" : ""}`}>▶</span>
+                    Archive ({closed.length})
+                  </button>
+                  {archiveOpen && (
+                    <ul className="mt-3 space-y-4 rounded-lg border border-ink/5 bg-ink/[0.02] p-4">
+                      {closed.map((item) => <HomeworkItem key={item.id} item={item} readOnly />)}
+                    </ul>
                   )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                </div>
+              )}
+            </>
+          );
+        })()}
       </section>
 
       <section className="card p-6">

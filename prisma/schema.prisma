@@ -35,7 +35,8 @@ model Homework {
   id          String   @id @default(cuid())
   title       String
   description String
-  attachments String  @default("[]") // JSON array of { url, name, type }
+  attachments String   @default("[]") // JSON array of { url, name, type }
+  status      String   @default("active") // "active" | "closed"
   studentId   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
