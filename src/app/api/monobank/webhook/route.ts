@@ -77,9 +77,23 @@ export async function POST(request: NextRequest) {
     return new NextResponse("ok", { status: 200 });
   }
 
-  // Get lesson price from settings (stored in kopecks)
-  const priceSetting = await prisma.settings.findUnique({ where: { key: "lesson_price" } });
-  const lessonPrice = priceSetting ? parseInt(priceSetting.value, 10) : 0;
+  // Resolve lesson price: student price → group price → global price
+  const studentWithGroups = await prisma.student.findUnique({
+    where: { id: matched.id },
+    select: {
+      lessonPrice: true,
+      groups: { select: { group: { select: { lessonPrice: true } } } },
+    },
+  });
+
+  const groupPrice = studentWithGroups?.groups
+    .map((g) => g.group.lessonPrice)
+    .find((p) => p != null) ?? null;
+
+  const globalSetting = await prisma.settings.findUnique({ where: { key: "lesson_price" } });
+  const globalPrice = globalSetting ? parseInt(globalSetting.value, 10) : 0;
+
+  const lessonPrice = studentWithGroups?.lessonPrice ?? groupPrice ?? globalPrice;
 
   // Calculate how many lessons this payment covers
   const lessonsCount = lessonPrice > 0 ? Math.floor(item.amount / lessonPrice) : 1;

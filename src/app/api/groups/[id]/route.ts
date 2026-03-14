@@ -5,6 +5,7 @@ import { isTeacherLoggedIn } from "@/lib/auth";
 type GroupStudentRow = {
   groupId: string;
   groupName: string;
+  groupLessonPrice: number | null;
   groupCreatedAt: string;
   studentId: string | null;
   studentEmail: string | null;
@@ -14,12 +15,13 @@ type GroupStudentRow = {
 async function fetchGroup(id: string) {
   const rows = await prisma.$queryRaw<GroupStudentRow[]>`
     SELECT
-      g.id      AS groupId,
-      g.name    AS groupName,
-      g.createdAt AS groupCreatedAt,
-      s.id      AS studentId,
-      s.email   AS studentEmail,
-      s.name    AS studentName
+      g.id           AS groupId,
+      g.name         AS groupName,
+      g.lessonPrice  AS groupLessonPrice,
+      g.createdAt    AS groupCreatedAt,
+      s.id           AS studentId,
+      s.email        AS studentEmail,
+      s.name         AS studentName
     FROM "Group" g
     LEFT JOIN "StudentGroup" sg ON sg.groupId = g.id
     LEFT JOIN "Student"      s  ON s.id = sg.studentId
@@ -30,6 +32,7 @@ async function fetchGroup(id: string) {
   return {
     id: first.groupId,
     name: first.groupName,
+    lessonPrice: first.groupLessonPrice,
     createdAt: first.groupCreatedAt,
     students: rows
       .filter((r) => r.studentId)
@@ -51,10 +54,18 @@ export async function PATCH(
     }
 
     const { id } = await params;
-    const { name, studentIds } = (body as Record<string, unknown>) ?? {};
+    const { name, studentIds, lessonPrice } = (body as Record<string, unknown>) ?? {};
 
     if (name && typeof name === "string" && name.trim()) {
       await prisma.$executeRaw`UPDATE "Group" SET name = ${name.trim()} WHERE id = ${id}`;
+    }
+
+    if (lessonPrice !== undefined) {
+      const priceInKopecks =
+        typeof lessonPrice === "number" && lessonPrice > 0
+          ? Math.round(lessonPrice * 100)
+          : null;
+      await prisma.$executeRaw`UPDATE "Group" SET lessonPrice = ${priceInKopecks} WHERE id = ${id}`;
     }
 
     if (Array.isArray(studentIds)) {

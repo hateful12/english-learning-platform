@@ -7,7 +7,7 @@ import { InviteSection } from "./InviteSection";
 import { GroupEditor, Group } from "./GroupEditor";
 import { ScheduleEditor } from "./ScheduleEditor";
 
-type Student = { id: string; email: string; name: string | null; paymentCode?: string; createdAt?: string };
+type Student = { id: string; email: string; name: string | null; paymentCode?: string; lessonPrice?: number | null; createdAt?: string };
 type HomeworkResponse = {
   id: string;
   response: string;
@@ -257,31 +257,12 @@ export function TeacherDashboard() {
                 {students.map((s) => {
                   const group = groups.find((g) => g.students.some((m) => m.id === s.id));
                   return (
-                    <li key={s.id} className="flex items-center justify-between gap-3 py-3">
-                      <div className="min-w-0">
-                        {s.name && <p className="font-medium text-ink truncate">{s.name}</p>}
-                        <p className={`text-sm truncate ${s.name ? "text-ink/50" : "font-medium text-ink"}`}>
-                          {s.email}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2 flex-wrap justify-end">
-                        {s.paymentCode && (
-                          <span className="font-mono text-xs text-ink/50 bg-ink/5 rounded px-2 py-0.5">
-                            {s.paymentCode}
-                          </span>
-                        )}
-                        {group && (
-                          <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
-                            {group.name}
-                          </span>
-                        )}
-                        {s.createdAt && (
-                          <span className="text-xs text-ink/30">
-                            {new Date(s.createdAt).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                    </li>
+                    <StudentRow
+                      key={s.id}
+                      student={s}
+                      group={group ?? null}
+                      onPriceChange={load}
+                    />
                   );
                 })}
               </ul>
@@ -528,6 +509,92 @@ export function TeacherDashboard() {
         </section>
       )}
     </div>
+  );
+}
+
+function StudentRow({
+  student,
+  group,
+  onPriceChange,
+}: {
+  student: Student;
+  group: { id: string; name: string } | null;
+  onPriceChange: () => void;
+}) {
+  const currentPrice = student.lessonPrice != null ? student.lessonPrice / 100 : null;
+  const [editing, setEditing] = useState(false);
+  const [priceInput, setPriceInput] = useState(currentPrice != null ? String(currentPrice) : "");
+  const [saving, setSaving] = useState(false);
+
+  async function savePrice() {
+    setSaving(true);
+    await fetch("/api/students", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: student.id, lessonPrice: priceInput !== "" ? Number(priceInput) : 0 }),
+    });
+    setSaving(false);
+    setEditing(false);
+    onPriceChange();
+  }
+
+  return (
+    <li className="flex items-center justify-between gap-3 py-3 flex-wrap">
+      <div className="min-w-0">
+        {student.name && <p className="font-medium text-ink truncate">{student.name}</p>}
+        <p className={`text-sm truncate ${student.name ? "text-ink/50" : "font-medium text-ink"}`}>
+          {student.email}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2 flex-wrap justify-end">
+        {/* Lesson price */}
+        {editing ? (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-ink/40">₴</span>
+            <input
+              type="number"
+              min="0"
+              step="50"
+              autoFocus
+              value={priceInput}
+              onChange={(e) => setPriceInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") savePrice(); if (e.key === "Escape") setEditing(false); }}
+              className="input text-xs py-0.5 w-20"
+              placeholder="price"
+            />
+            <button type="button" disabled={saving} onClick={savePrice} className="text-xs text-accent hover:underline">
+              {saving ? "…" : "Save"}
+            </button>
+            <button type="button" onClick={() => setEditing(false)} className="text-xs text-ink/40 hover:underline">Cancel</button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => { setPriceInput(currentPrice != null ? String(currentPrice) : ""); setEditing(true); }}
+            className="text-xs text-ink/50 hover:text-ink/80 border border-dashed border-ink/20 rounded px-2 py-0.5 hover:border-ink/40 transition-colors"
+            title="Set lesson price"
+          >
+            {currentPrice != null ? `₴${currentPrice}/lesson` : "+ set price"}
+          </button>
+        )}
+
+        {student.paymentCode && (
+          <span className="font-mono text-xs text-ink/40 bg-ink/5 rounded px-2 py-0.5">
+            {student.paymentCode}
+          </span>
+        )}
+        {group && (
+          <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
+            {group.name}
+          </span>
+        )}
+        {student.createdAt && (
+          <span className="text-xs text-ink/30">
+            {new Date(student.createdAt).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+    </li>
   );
 }
 

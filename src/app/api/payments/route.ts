@@ -112,9 +112,18 @@ export async function PATCH(request: NextRequest) {
     const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
     if (!payment) return NextResponse.json({ error: "Payment not found" }, { status: 404 });
 
-    // Recalculate lessonsCount based on lesson price
-    const priceSetting = await prisma.settings.findUnique({ where: { key: "lesson_price" } });
-    const lessonPrice = priceSetting ? parseInt(priceSetting.value, 10) : 0;
+    // Recalculate lessonsCount using resolved price hierarchy
+    const studentData = await prisma.student.findUnique({
+      where: { id: studentId },
+      select: {
+        lessonPrice: true,
+        groups: { select: { group: { select: { lessonPrice: true } } } },
+      },
+    });
+    const groupPrice = studentData?.groups.map((g) => g.group.lessonPrice).find((p) => p != null) ?? null;
+    const globalSetting = await prisma.settings.findUnique({ where: { key: "lesson_price" } });
+    const globalPrice = globalSetting ? parseInt(globalSetting.value, 10) : 0;
+    const lessonPrice = studentData?.lessonPrice ?? groupPrice ?? globalPrice;
     const lessonsCount = lessonPrice > 0 ? Math.floor(payment.amount / lessonPrice) : 1;
 
     // Update student assignment and lessonsCount

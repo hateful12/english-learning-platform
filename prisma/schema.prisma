@@ -13,6 +13,7 @@ model Student {
   name              String?
   passwordHash      String
   paymentCode       String              @unique @default(cuid())
+  lessonPrice       Int?
   createdAt         DateTime            @default(now())
   homework          Homework[]
   paymentInfos      PaymentInfo[]
@@ -82,6 +83,7 @@ model Teacher {
 model Group {
   id               String            @id @default(cuid())
   name             String
+  lessonPrice      Int?
   createdAt        DateTime          @default(now())
   students         StudentGroup[]
   homework         Homework[]

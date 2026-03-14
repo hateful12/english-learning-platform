@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 type GroupStudentRow = {
   groupId: string;
   groupName: string;
+  groupLessonPrice: number | null;
   groupCreatedAt: string;
   studentId: string | null;
   studentEmail: string | null;
@@ -13,10 +14,16 @@ type GroupStudentRow = {
 };
 
 function buildGroupList(rows: GroupStudentRow[]) {
-  const map = new Map<string, { id: string; name: string; createdAt: string; students: Array<{ id: string; email: string; name: string | null }> }>();
+  const map = new Map<string, { id: string; name: string; lessonPrice: number | null; createdAt: string; students: Array<{ id: string; email: string; name: string | null }> }>();
   for (const row of rows) {
     if (!map.has(row.groupId)) {
-      map.set(row.groupId, { id: row.groupId, name: row.groupName, createdAt: row.groupCreatedAt, students: [] });
+      map.set(row.groupId, {
+        id: row.groupId,
+        name: row.groupName,
+        lessonPrice: row.groupLessonPrice,
+        createdAt: row.groupCreatedAt,
+        students: [],
+      });
     }
     if (row.studentId) {
       map.get(row.groupId)!.students.push({ id: row.studentId, email: row.studentEmail!, name: row.studentName });
@@ -32,12 +39,13 @@ export async function GET() {
 
     const rows = await prisma.$queryRaw<GroupStudentRow[]>`
       SELECT
-        g.id      AS groupId,
-        g.name    AS groupName,
-        g.createdAt AS groupCreatedAt,
-        s.id      AS studentId,
-        s.email   AS studentEmail,
-        s.name    AS studentName
+        g.id           AS groupId,
+        g.name         AS groupName,
+        g.lessonPrice  AS groupLessonPrice,
+        g.createdAt    AS groupCreatedAt,
+        s.id           AS studentId,
+        s.email        AS studentEmail,
+        s.name         AS studentName
       FROM "Group" g
       LEFT JOIN "StudentGroup" sg ON sg.groupId = g.id
       LEFT JOIN "Student"      s  ON s.id = sg.studentId
@@ -61,7 +69,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { name, studentIds } = (body as Record<string, unknown>) ?? {};
+    const { name, studentIds, lessonPrice } = (body as Record<string, unknown>) ?? {};
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Group name required" }, { status: 400 });
     }
@@ -70,10 +78,15 @@ export async function POST(request: NextRequest) {
       ? (studentIds as unknown[]).filter((id): id is string => typeof id === "string")
       : [];
 
+    const priceInKopecks =
+      typeof lessonPrice === "number" && lessonPrice > 0
+        ? Math.round(lessonPrice * 100)
+        : null;
+
     const id = randomUUID().replace(/-/g, "");
     const now = new Date().toISOString();
 
-    await prisma.$executeRaw`INSERT INTO "Group" (id, name, createdAt) VALUES (${id}, ${name.trim()}, ${now})`;
+    await prisma.$executeRaw`INSERT INTO "Group" (id, name, lessonPrice, createdAt) VALUES (${id}, ${name.trim()}, ${priceInKopecks}, ${now})`;
 
     for (const studentId of ids) {
       await prisma.$executeRaw`
@@ -83,12 +96,13 @@ export async function POST(request: NextRequest) {
 
     const rows = await prisma.$queryRaw<GroupStudentRow[]>`
       SELECT
-        g.id      AS groupId,
-        g.name    AS groupName,
-        g.createdAt AS groupCreatedAt,
-        s.id      AS studentId,
-        s.email   AS studentEmail,
-        s.name    AS studentName
+        g.id           AS groupId,
+        g.name         AS groupName,
+        g.lessonPrice  AS groupLessonPrice,
+        g.createdAt    AS groupCreatedAt,
+        s.id           AS studentId,
+        s.email        AS studentEmail,
+        s.name         AS studentName
       FROM "Group" g
       LEFT JOIN "StudentGroup" sg ON sg.groupId = g.id
       LEFT JOIN "Student"      s  ON s.id = sg.studentId

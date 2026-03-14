@@ -6,6 +6,7 @@ type Student = { id: string; email: string; name: string | null };
 export type Group = {
   id: string;
   name: string;
+  lessonPrice?: number | null;
   createdAt: string;
   students: Student[];
 };
@@ -25,8 +26,10 @@ function GroupCard({
   onSaved: () => void;
   onDeleted: () => void;
 }) {
+  const currentPrice = group.lessonPrice != null ? group.lessonPrice / 100 : null;
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(group.name);
+  const [lessonPrice, setLessonPrice] = useState(currentPrice != null ? String(currentPrice) : "");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     new Set(group.students.map((s) => s.id))
   );
@@ -44,6 +47,7 @@ function GroupCard({
   function cancelEdit() {
     setEditing(false);
     setName(group.name);
+    setLessonPrice(currentPrice != null ? String(currentPrice) : "");
     setSelectedIds(new Set(group.students.map((s) => s.id)));
   }
 
@@ -54,7 +58,11 @@ function GroupCard({
       const res = await fetch(`/api/groups/${group.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), studentIds: Array.from(selectedIds) }),
+        body: JSON.stringify({
+          name: name.trim(),
+          studentIds: Array.from(selectedIds),
+          lessonPrice: lessonPrice !== "" ? Number(lessonPrice) : 0,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -89,6 +97,23 @@ function GroupCard({
             className="input w-full font-medium"
             placeholder="Group name"
           />
+          <div>
+            <label className="block text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1">
+              Lesson price (UAH)
+            </label>
+            <div className="relative w-36">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 text-sm">₴</span>
+              <input
+                type="number"
+                min="0"
+                step="50"
+                value={lessonPrice}
+                onChange={(e) => setLessonPrice(e.target.value)}
+                placeholder="e.g. 500"
+                className="input pl-7 w-full"
+              />
+            </div>
+          </div>
           <div>
             <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-2">Members</p>
             <ul className="space-y-1 max-h-48 overflow-y-auto">
@@ -131,7 +156,14 @@ function GroupCard({
       ) : (
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <p className="font-medium text-ink">{group.name}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-medium text-ink">{group.name}</p>
+              {currentPrice != null && (
+                <span className="text-xs text-ink/50 bg-ink/5 rounded px-2 py-0.5">
+                  ₴{currentPrice}/lesson
+                </span>
+              )}
+            </div>
             {group.students.length > 0 ? (
               <p className="mt-1 text-sm text-ink/60">
                 {group.students.map(studentDisplay).join(", ")}
@@ -176,6 +208,7 @@ export function GroupEditor({
   onDelete: () => void;
 }) {
   const [name, setName] = useState("");
+  const [lessonPrice, setLessonPrice] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -197,7 +230,11 @@ export function GroupEditor({
       const res = await fetch("/api/groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), studentIds: Array.from(selectedIds) }),
+        body: JSON.stringify({
+          name: name.trim(),
+          studentIds: Array.from(selectedIds),
+          lessonPrice: lessonPrice !== "" ? Number(lessonPrice) : 0,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -205,6 +242,7 @@ export function GroupEditor({
         return;
       }
       setName("");
+      setLessonPrice("");
       setSelectedIds(new Set());
       setFormOpen(false);
       onAdd();
@@ -234,6 +272,23 @@ export function GroupEditor({
             className="input w-full"
             autoFocus
           />
+          <div>
+            <label className="block text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1">
+              Lesson price (UAH)
+            </label>
+            <div className="relative w-36">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 text-sm">₴</span>
+              <input
+                type="number"
+                min="0"
+                step="50"
+                value={lessonPrice}
+                onChange={(e) => setLessonPrice(e.target.value)}
+                placeholder="e.g. 500"
+                className="input pl-7 w-full"
+              />
+            </div>
+          </div>
           <div>
             <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-2">Add students</p>
             {allStudents.length > 0 ? (
@@ -266,7 +321,7 @@ export function GroupEditor({
             </button>
             <button
               type="button"
-              onClick={() => { setFormOpen(false); setName(""); setSelectedIds(new Set()); }}
+              onClick={() => { setFormOpen(false); setName(""); setLessonPrice(""); setSelectedIds(new Set()); }}
               className="btn-secondary text-sm py-1 px-3"
             >
               Cancel
