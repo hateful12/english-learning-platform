@@ -7,7 +7,7 @@ import { PaymentEditor } from "./PaymentEditor";
 import { InviteSection } from "./InviteSection";
 import { GroupEditor, Group } from "./GroupEditor";
 
-type Student = { id: string; email: string; name: string | null };
+type Student = { id: string; email: string; name: string | null; createdAt?: string };
 type HomeworkResponse = {
   id: string;
   response: string;
@@ -131,10 +131,49 @@ export function TeacherDashboard() {
       )}
 
       {activeTab === "students" && (
-        <section className="card p-6">
-          <h2 className="mb-4 font-serif text-xl font-semibold text-ink">Invite students</h2>
-          <InviteSection />
-        </section>
+        <div className="space-y-6">
+          <section className="card p-6">
+            <h2 className="mb-4 font-serif text-xl font-semibold text-ink">
+              Students ({students.length})
+            </h2>
+            {students.length === 0 ? (
+              <p className="text-sm text-ink/50">No students yet.</p>
+            ) : (
+              <ul className="divide-y divide-ink/5">
+                {students.map((s) => {
+                  const group = groups.find((g) => g.students.some((m) => m.id === s.id));
+                  return (
+                    <li key={s.id} className="flex items-center justify-between gap-3 py-3">
+                      <div className="min-w-0">
+                        {s.name && <p className="font-medium text-ink truncate">{s.name}</p>}
+                        <p className={`text-sm truncate ${s.name ? "text-ink/50" : "font-medium text-ink"}`}>
+                          {s.email}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {group && (
+                          <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
+                            {group.name}
+                          </span>
+                        )}
+                        {s.createdAt && (
+                          <span className="text-xs text-ink/30">
+                            {new Date(s.createdAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          <section className="card p-6">
+            <h2 className="mb-4 font-serif text-xl font-semibold text-ink">Invite students</h2>
+            <InviteSection />
+          </section>
+        </div>
       )}
 
       {activeTab === "links" && (
