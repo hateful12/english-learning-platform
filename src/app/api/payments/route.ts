@@ -28,7 +28,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { action, lessonId, studentId } = (body as Record<string, unknown>) ?? {};
+  const { action, lessonId, studentId, amount, paidAt } = (body as Record<string, unknown>) ?? {};
 
   // Manually mark a specific lesson as paid
   if (action === "markPaid" && typeof lessonId === "string") {
@@ -38,16 +38,18 @@ export async function PATCH(request: NextRequest) {
     const sId = typeof studentId === "string" ? studentId : lesson.studentId;
     if (!sId) return NextResponse.json({ error: "No student associated" }, { status: 400 });
 
-    // Check if already linked to a payment
+    const paidAmount = typeof amount === "number" && amount > 0 ? amount : 0;
+    const receivedAt = typeof paidAt === "string" && paidAt ? new Date(paidAt) : new Date();
+
     if (!lesson.paymentId) {
       const payment = await prisma.payment.create({
         data: {
           studentId: sId,
           monoId: `manual_${lessonId}_${Date.now()}`,
-          amount: 0,
+          amount: paidAmount,
           lessonsCount: 1,
           comment: "Manually marked as paid by teacher",
-          receivedAt: new Date(),
+          receivedAt,
         },
       });
       await prisma.scheduledLesson.update({
@@ -55,6 +57,16 @@ export async function PATCH(request: NextRequest) {
         data: { isPaid: true, paymentId: payment.id },
       });
     } else {
+      // Update existing payment record with amount/date if provided
+      if (paidAmount > 0 || paidAt) {
+        await prisma.payment.update({
+          where: { id: lesson.paymentId },
+          data: {
+            ...(paidAmount > 0 && { amount: paidAmount }),
+            ...(paidAt && { receivedAt }),
+          },
+        });
+      }
       await prisma.scheduledLesson.update({
         where: { id: lessonId },
         data: { isPaid: true },

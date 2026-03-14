@@ -86,6 +86,9 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [togglingPaid, setTogglingPaid] = useState(false);
+  const [markPaidOpen, setMarkPaidOpen] = useState(false);
+  const [markPaidAmount, setMarkPaidAmount] = useState("");
+  const [markPaidDate, setMarkPaidDate] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const fetchLessons = useCallback(async () => {
@@ -148,6 +151,9 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
     setEditingId(null);
     setForm(emptyForm);
     setError(null);
+    setMarkPaidOpen(false);
+    setMarkPaidAmount("");
+    setMarkPaidDate("");
   }
 
   function repeatDays(): number {
@@ -219,7 +225,15 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
     setDeleting(false);
   }
 
-  async function handleTogglePaid(lessonId: string, currentlyPaid: boolean) {
+  function openMarkPaidForm() {
+    const today = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    setMarkPaidDate(`${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`);
+    setMarkPaidAmount("");
+    setMarkPaidOpen(true);
+  }
+
+  async function handleTogglePaid(lessonId: string, currentlyPaid: boolean, amount?: number, date?: string) {
     setTogglingPaid(true);
     try {
       await fetch("/api/payments", {
@@ -228,9 +242,12 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
         body: JSON.stringify({
           action: currentlyPaid ? "markUnpaid" : "markPaid",
           lessonId,
+          amount: amount ?? null,
+          paidAt: date ?? null,
         }),
       });
       await fetchLessons();
+      setMarkPaidOpen(false);
     } finally {
       setTogglingPaid(false);
     }
@@ -496,26 +513,85 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
               const lesson = lessons.find((l) => l.id === editingId);
               if (!lesson?.studentId) return null;
               return (
-                <div className={`mt-4 flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
-                  lesson.isPaid
-                    ? "bg-green-50 border border-green-200"
-                    : "bg-amber-50 border border-amber-200"
-                }`}>
-                  <span className={lesson.isPaid ? "text-green-700 font-medium" : "text-amber-700 font-medium"}>
-                    {lesson.isPaid ? "✓ Paid" : "⏳ Awaiting payment"}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={togglingPaid}
-                    onClick={() => handleTogglePaid(lesson.id, lesson.isPaid)}
-                    className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors disabled:opacity-50 ${
-                      lesson.isPaid
-                        ? "bg-white border border-green-300 text-green-700 hover:bg-green-50"
-                        : "bg-white border border-amber-300 text-amber-700 hover:bg-amber-50"
-                    }`}
-                  >
-                    {togglingPaid ? "…" : lesson.isPaid ? "Mark unpaid" : "Mark as paid"}
-                  </button>
+                <div className="mt-4 space-y-2">
+                  <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
+                    lesson.isPaid
+                      ? "bg-green-50 border border-green-200"
+                      : "bg-amber-50 border border-amber-200"
+                  }`}>
+                    <span className={lesson.isPaid ? "text-green-700 font-medium" : "text-amber-700 font-medium"}>
+                      {lesson.isPaid ? "✓ Paid" : "⏳ Awaiting payment"}
+                    </span>
+                    {lesson.isPaid ? (
+                      <button
+                        type="button"
+                        disabled={togglingPaid}
+                        onClick={() => handleTogglePaid(lesson.id, true)}
+                        className="text-xs px-2.5 py-1 rounded-md font-medium transition-colors disabled:opacity-50 bg-white border border-green-300 text-green-700 hover:bg-green-50"
+                      >
+                        {togglingPaid ? "…" : "Mark unpaid"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setMarkPaidOpen((o) => { if (!o) openMarkPaidForm(); return !o; })}
+                        className="text-xs px-2.5 py-1 rounded-md font-medium transition-colors bg-white border border-amber-300 text-amber-700 hover:bg-amber-50"
+                      >
+                        Mark as paid
+                      </button>
+                    )}
+                  </div>
+
+                  {!lesson.isPaid && markPaidOpen && (
+                    <div className="rounded-lg border border-ink/10 bg-ink/[0.02] p-3 space-y-2.5">
+                      <p className="text-xs font-medium text-ink/60">Record payment details</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs text-ink/50 mb-1">Amount (UAH)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="50"
+                            placeholder="e.g. 500"
+                            value={markPaidAmount}
+                            onChange={(e) => setMarkPaidAmount(e.target.value)}
+                            className="input text-sm py-1.5"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-ink/50 mb-1">Date paid</label>
+                          <input
+                            type="date"
+                            value={markPaidDate}
+                            onChange={(e) => setMarkPaidDate(e.target.value)}
+                            className="input text-sm py-1.5"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setMarkPaidOpen(false)}
+                          className="btn-secondary text-xs py-1 px-2"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={togglingPaid}
+                          onClick={() => handleTogglePaid(
+                            lesson.id,
+                            false,
+                            markPaidAmount ? Math.round(Number(markPaidAmount) * 100) : undefined,
+                            markPaidDate || undefined
+                          )}
+                          className="btn-primary text-xs py-1 px-2 disabled:opacity-50"
+                        >
+                          {togglingPaid ? "Saving…" : "Confirm paid"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
