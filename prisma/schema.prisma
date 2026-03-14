@@ -12,6 +12,7 @@ model Student {
   email             String              @unique
   name              String?
   passwordHash      String
+  paymentCode       String              @unique @default(cuid())
   createdAt         DateTime            @default(now())
   homework          Homework[]
   paymentInfos      PaymentInfo[]
@@ -19,6 +20,7 @@ model Student {
   homeworkResponses HomeworkResponse[]
   groups            StudentGroup[]
   scheduledLessons  ScheduledLesson[]
+  payments          Payment[]
 }
 
 model Invite {
@@ -103,9 +105,11 @@ model ScheduledLesson {
   notes       String?
   studentId   String?
   groupId     String?
+  isPaid      Boolean  @default(false)
   createdAt   DateTime @default(now())
   student     Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
   group       Group?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  payment     Payment?
 }
 
 // Tracks teacher closing a group homework for an individual student
@@ -114,4 +118,23 @@ model HomeworkStudentClose {
   studentId  String
   closedAt   DateTime @default(now())
   @@id([homeworkId, studentId])
+}
+
+model Payment {
+  id         String           @id @default(cuid())
+  studentId  String
+  lessonId   String?          @unique
+  monoId     String           @unique
+  amount     Int
+  comment    String?
+  receivedAt DateTime
+  createdAt  DateTime         @default(now())
+  student    Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lesson     ScheduledLesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+}
+
+model Settings {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
 }

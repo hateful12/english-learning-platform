@@ -21,6 +21,7 @@ type ScheduledLesson = {
   durationMin: number;
   zoomUrl: string | null;
   notes: string | null;
+  isPaid: boolean;
   group: { id: string; name: string } | null;
 };
 
@@ -65,9 +66,16 @@ export function ScheduleViewer() {
     return (
       <div className="flex flex-col h-full overflow-hidden px-0.5">
         <span className="font-semibold text-xs leading-tight truncate">{l.title}</span>
-        {l.zoomUrl && (
-          <span className="text-[10px] opacity-80 mt-auto">🔗 Zoom</span>
-        )}
+        <div className="flex items-center gap-1 mt-auto">
+          {l.zoomUrl && (
+            <span className="text-[10px] opacity-80">🔗</span>
+          )}
+          {l.isPaid ? (
+            <span className="text-[10px] opacity-90">✓ paid</span>
+          ) : (
+            <span className="text-[10px] opacity-70">unpaid</span>
+          )}
+        </div>
       </div>
     );
   }
@@ -183,7 +191,16 @@ export function ScheduleViewer() {
               )}
             </div>
 
-            <div className="flex justify-between items-center mt-5">
+            {/* Payment status badge */}
+            <div className={`mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
+              detail.isPaid
+                ? "bg-green-50 text-green-700 border border-green-200"
+                : "bg-amber-50 text-amber-700 border border-amber-200"
+            }`}>
+              <span>{detail.isPaid ? "✓ Paid" : "⏳ Awaiting payment"}</span>
+            </div>
+
+            <div className="flex justify-between items-center mt-4">
               <button
                 onClick={() => setDetail(null)}
                 className="btn-secondary text-sm"
@@ -202,8 +219,10 @@ export function ScheduleViewer() {
                   </svg>
                   Join Zoom
                 </a>
+              ) : detail.isPaid ? (
+                <span className="text-xs text-ink/40 italic">No Zoom link added yet</span>
               ) : (
-                <span className="text-xs text-ink/40 italic">No Zoom link</span>
+                <span className="text-xs text-amber-600 italic">Pay to unlock Zoom link</span>
               )}
             </div>
           </div>

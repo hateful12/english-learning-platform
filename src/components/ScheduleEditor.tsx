@@ -26,6 +26,7 @@ type ScheduledLesson = {
   notes: string | null;
   studentId: string | null;
   groupId: string | null;
+  isPaid: boolean;
   student: Student | null;
   group: Group | null;
 };
@@ -229,9 +230,14 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
       <div className="flex flex-col h-full overflow-hidden px-0.5">
         <span className="font-semibold text-xs leading-tight truncate">{l.title}</span>
         <span className="text-[10px] opacity-80 truncate">{assigneeLabel(l)}</span>
-        {l.zoomUrl && (
-          <span className="text-[10px] opacity-70 mt-auto">🔗 Zoom</span>
-        )}
+        <div className="flex items-center gap-1 mt-auto">
+          {l.zoomUrl && <span className="text-[10px] opacity-70">🔗</span>}
+          {l.studentId && (
+            l.isPaid
+              ? <span className="text-[10px] opacity-90">✓ paid</span>
+              : <span className="text-[10px] opacity-70">unpaid</span>
+          )}
+        </div>
       </div>
     );
   }
@@ -467,6 +473,20 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
                 />
               </div>
             </div>
+
+            {editingId && (() => {
+              const lesson = lessons.find((l) => l.id === editingId);
+              if (!lesson?.studentId) return null;
+              return (
+                <div className={`mt-4 flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
+                  lesson.isPaid
+                    ? "bg-green-50 text-green-700 border border-green-200"
+                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                }`}>
+                  <span>{lesson.isPaid ? "✓ Paid" : "⏳ Awaiting payment"}</span>
+                </div>
+              );
+            })()}
 
             {error && (
               <p className="mt-3 text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>

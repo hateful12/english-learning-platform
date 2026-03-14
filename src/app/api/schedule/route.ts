@@ -12,6 +12,7 @@ type LessonRow = {
   notes: string | null;
   studentId: string | null;
   groupId: string | null;
+  isPaid: number | boolean;
   createdAt: string;
   s_id: string | null;
   s_email: string | null;
@@ -20,16 +21,19 @@ type LessonRow = {
   g_name: string | null;
 };
 
-function formatLesson(row: LessonRow) {
+function formatLesson(row: LessonRow, isTeacher: boolean) {
+  const isPaid = Boolean(row.isPaid);
   return {
     id: row.id,
     title: row.title,
     startAt: row.startAt,
     durationMin: row.durationMin,
-    zoomUrl: row.zoomUrl,
+    // Hide zoomUrl from students until lesson is paid
+    zoomUrl: isTeacher || isPaid ? row.zoomUrl : null,
     notes: row.notes,
     studentId: row.studentId,
     groupId: row.groupId,
+    isPaid,
     createdAt: row.createdAt,
     student: row.s_id ? { id: row.s_id, email: row.s_email, name: row.s_name } : null,
     group: row.g_id ? { id: row.g_id, name: row.g_name } : null,
@@ -44,7 +48,7 @@ export async function GET() {
       const rows = await prisma.$queryRaw<LessonRow[]>`
         SELECT
           sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
-          sl.studentId, sl.groupId, sl.createdAt,
+          sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
           s.id    AS s_id,
           s.email AS s_email,
           s.name  AS s_name,
@@ -55,7 +59,7 @@ export async function GET() {
         LEFT JOIN "Group"   g ON g.id = sl.groupId
         ORDER BY sl.startAt ASC
       `;
-      return NextResponse.json(rows.map(formatLesson));
+      return NextResponse.json(rows.map((r) => formatLesson(r, true)));
     }
 
     const studentId = await getStudentId();
@@ -72,7 +76,7 @@ export async function GET() {
       rows = await prisma.$queryRawUnsafe<LessonRow[]>(
         `SELECT
           sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
-          sl.studentId, sl.groupId, sl.createdAt,
+          sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
           g.id   AS g_id,
           g.name AS g_name,
           NULL AS s_id, NULL AS s_email, NULL AS s_name
@@ -87,7 +91,7 @@ export async function GET() {
       rows = await prisma.$queryRaw<LessonRow[]>`
         SELECT
           sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
-          sl.studentId, sl.groupId, sl.createdAt,
+          sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
           g.id   AS g_id,
           g.name AS g_name,
           NULL AS s_id, NULL AS s_email, NULL AS s_name
@@ -98,7 +102,7 @@ export async function GET() {
       `;
     }
 
-    return NextResponse.json(rows.map(formatLesson));
+    return NextResponse.json(rows.map((r) => formatLesson(r, false)));
   } catch (err) {
     console.error("GET /api/schedule error:", err);
     return NextResponse.json({ error: "Failed to load schedule" }, { status: 500 });
@@ -148,14 +152,14 @@ export async function POST(request: NextRequest) {
       const startISO = start.toISOString();
 
       await prisma.$executeRaw`
-        INSERT INTO "ScheduledLesson" (id, title, startAt, durationMin, zoomUrl, notes, studentId, groupId, createdAt)
-        VALUES (${id}, ${title.trim()}, ${startISO}, ${dur}, ${zoom}, ${notesVal}, ${sId}, ${gId}, ${now})
+        INSERT INTO "ScheduledLesson" (id, title, startAt, durationMin, zoomUrl, notes, studentId, groupId, isPaid, createdAt)
+        VALUES (${id}, ${title.trim()}, ${startISO}, ${dur}, ${zoom}, ${notesVal}, ${sId}, ${gId}, 0, ${now})
       `;
 
       const rows = await prisma.$queryRaw<LessonRow[]>`
         SELECT
           sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
-          sl.studentId, sl.groupId, sl.createdAt,
+          sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
           s.id    AS s_id,
           s.email AS s_email,
           s.name  AS s_name,
@@ -166,7 +170,7 @@ export async function POST(request: NextRequest) {
         LEFT JOIN "Group"   g ON g.id = sl.groupId
         WHERE sl.id = ${id}
       `;
-      if (rows[0]) created.push(formatLesson(rows[0]));
+      if (rows[0]) created.push(formatLesson(rows[0], true));
     }
 
     return NextResponse.json(created.length === 1 ? created[0] : created);

@@ -9,7 +9,7 @@ export async function GET() {
   }
   const students = await prisma.student.findMany({
     orderBy: { createdAt: "desc" },
-    select: { id: true, email: true, name: true, createdAt: true },
+    select: { id: true, email: true, name: true, paymentCode: true, createdAt: true },
   });
   return NextResponse.json(students);
 }

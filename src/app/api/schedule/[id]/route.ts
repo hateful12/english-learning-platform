@@ -11,6 +11,7 @@ type LessonRow = {
   notes: string | null;
   studentId: string | null;
   groupId: string | null;
+  isPaid: number | boolean;
   createdAt: string;
   s_id: string | null;
   s_email: string | null;
@@ -29,6 +30,7 @@ function formatLesson(row: LessonRow) {
     notes: row.notes,
     studentId: row.studentId,
     groupId: row.groupId,
+    isPaid: Boolean(row.isPaid),
     createdAt: row.createdAt,
     student: row.s_id ? { id: row.s_id, email: row.s_email, name: row.s_name } : null,
     group: row.g_id ? { id: row.g_id, name: row.g_name } : null,
@@ -99,7 +101,7 @@ export async function PATCH(
     const rows = await prisma.$queryRaw<LessonRow[]>`
       SELECT
         sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
-        sl.studentId, sl.groupId, sl.createdAt,
+        sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
         s.id    AS s_id,
         s.email AS s_email,
         s.name  AS s_name,

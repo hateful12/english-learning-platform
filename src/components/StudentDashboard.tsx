@@ -116,14 +116,17 @@ function HomeworkSubmit({
   );
 }
 type PaymentInfo = { id: string; content: string; amount: string | null } | null;
+type StudentInfo = { id: string; email: string; name: string | null; paymentCode: string } | null;
 
 export function StudentDashboard() {
   const [homework, setHomework] = useState<Homework[]>([]);
   const [payment, setPayment] = useState<PaymentInfo>(null);
+  const [studentInfo, setStudentInfo] = useState<StudentInfo>(null);
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveMonth, setArchiveMonth] = useState<string>("");
+  const [copiedCode, setCopiedCode] = useState(false);
 
   function loadHomework() {
     return fetch("/api/homework")
@@ -141,13 +144,24 @@ export function StudentDashboard() {
     }
   }
 
+  function copyPaymentCode(code: string) {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    });
+  }
+
   useEffect(() => {
     Promise.all([
       fetch("/api/homework").then((r) => safeJson(r, [])),
       fetch("/api/payment").then((r) => safeJson(r, null)),
-    ]).then(([hw, pay]) => {
+      fetch("/api/auth/student/session").then((r) => safeJson(r, null)),
+    ]).then(([hw, pay, session]) => {
       setHomework(Array.isArray(hw) ? hw : []);
       setPayment(pay);
+      if (session?.loggedIn && session.student?.paymentCode) {
+        setStudentInfo(session.student);
+      }
       setLoading(false);
     });
   }, []);
@@ -339,10 +353,34 @@ export function StudentDashboard() {
         <h2 className="mb-4 font-serif text-xl font-semibold text-ink">
           Payment for lessons
         </h2>
+
+        {studentInfo?.paymentCode && (
+          <div className="mb-5 rounded-xl border border-accent/20 bg-accent/5 p-4">
+            <p className="text-sm font-medium text-ink/70 mb-2">
+              Your payment reference code
+            </p>
+            <p className="text-xs text-ink/50 mb-3">
+              Always include this code in the transfer comment so your payment is matched automatically.
+            </p>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-2xl font-bold tracking-widest text-accent select-all">
+                {studentInfo.paymentCode}
+              </span>
+              <button
+                type="button"
+                onClick={() => copyPaymentCode(studentInfo.paymentCode)}
+                className="rounded-lg border border-accent/30 bg-white px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/5 transition-colors"
+              >
+                {copiedCode ? "Copied!" : "Copy"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {!payment ? (
           <p className="text-ink/50">No payment info yet.</p>
         ) : (
-          <div>
+          <div className="space-y-1">
             {payment.amount && (
               <p className="font-medium text-ink">Amount: {payment.amount}</p>
             )}
