@@ -8,11 +8,11 @@ datasource db {
 }
 
 model Student {
-  id                String             @id @default(cuid())
-  email             String             @unique
+  id                String              @id @default(cuid())
+  email             String              @unique
   name              String?
   passwordHash      String
-  createdAt         DateTime           @default(now())
+  createdAt         DateTime            @default(now())
   homework          Homework[]
   lessonLinks       LessonLink[]
   miroLinks         MiroLink[]
@@ -20,6 +20,7 @@ model Student {
   invites           Invite[]
   homeworkResponses HomeworkResponse[]
   groups            StudentGroup[]
+  scheduledLessons  ScheduledLesson[]
 }
 
 model Invite {
@@ -99,11 +100,12 @@ model Teacher {
 }
 
 model Group {
-  id        String         @id @default(cuid())
-  name      String
-  createdAt DateTime       @default(now())
-  students  StudentGroup[]
-  homework  Homework[]
+  id               String            @id @default(cuid())
+  name             String
+  createdAt        DateTime          @default(now())
+  students         StudentGroup[]
+  homework         Homework[]
+  scheduledLessons ScheduledLesson[]
 }
 
 model StudentGroup {
@@ -112,6 +114,20 @@ model StudentGroup {
   student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
   @@id([studentId, groupId])
+}
+
+model ScheduledLesson {
+  id          String   @id @default(cuid())
+  title       String
+  startAt     DateTime
+  durationMin Int      @default(60)
+  zoomUrl     String?
+  notes       String?
+  studentId   String?
+  groupId     String?
+  createdAt   DateTime @default(now())
+  student     Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  group       Group?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
 }
 
 // Tracks teacher closing a group homework for an individual student

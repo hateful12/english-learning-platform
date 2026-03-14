@@ -6,6 +6,7 @@ import { LinkEditor } from "./LinkEditor";
 import { PaymentEditor } from "./PaymentEditor";
 import { InviteSection } from "./InviteSection";
 import { GroupEditor, Group } from "./GroupEditor";
+import { ScheduleEditor } from "./ScheduleEditor";
 
 type Student = { id: string; email: string; name: string | null; createdAt?: string };
 type HomeworkResponse = {
@@ -27,10 +28,11 @@ type Homework = {
 type LinkItem = { id: string; title: string; url: string; studentId?: string | null };
 type PaymentInfo = { id: string; content: string; amount: string | null; studentId?: string | null };
 
-type Tab = "homework" | "groups" | "students" | "links" | "miro" | "payment";
+type Tab = "homework" | "groups" | "students" | "links" | "miro" | "payment" | "schedule";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "homework", label: "Homework" },
+  { id: "schedule", label: "Schedule" },
   { id: "groups", label: "Groups" },
   { id: "students", label: "Students" },
   { id: "links", label: "Lesson links" },
@@ -212,6 +214,12 @@ export function TeacherDashboard() {
             students={students}
             onSave={load}
           />
+        </section>
+      )}
+
+      {activeTab === "schedule" && (
+        <section className="card overflow-hidden">
+          <ScheduleEditor students={students} groups={groups} />
         </section>
       )}
     </div>

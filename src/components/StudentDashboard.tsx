@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ScheduleViewer } from "./ScheduleViewer";
 
 type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
 type HomeworkResponse = {
@@ -187,6 +188,13 @@ export function StudentDashboard() {
 
   return (
     <div className="space-y-10">
+      <section className="card p-6">
+        <h2 className="mb-4 font-serif text-xl font-semibold text-ink">
+          Schedule
+        </h2>
+        <ScheduleViewer />
+      </section>
+
       <section className="card p-6">
         <h2 className="mb-4 font-serif text-xl font-semibold text-ink">
           Homework
