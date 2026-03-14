@@ -63,52 +63,63 @@ export async function POST(request: NextRequest) {
   const matched = students.find((s) => searchText.includes(s.paymentCode.toUpperCase()));
 
   if (!matched) {
-    // Transaction received but no matching student — store as unmatched for teacher review
+    // Store as unmatched — teacher can assign manually
     await prisma.payment.create({
       data: {
-        studentId: students[0]?.id ?? "", // placeholder; teacher can reassign
+        studentId: students[0]?.id ?? "",
         monoId: item.id,
         amount: item.amount,
+        lessonsCount: 0,
         comment: [item.comment, item.description].filter(Boolean).join(" | ") || null,
         receivedAt: new Date(item.time * 1000),
-        // no lessonId — unmatched
       },
     });
     return new NextResponse("ok", { status: 200 });
   }
 
-  // Find the next unpaid upcoming lesson for this student
+  // Get lesson price from settings (stored in kopecks)
+  const priceSetting = await prisma.settings.findUnique({ where: { key: "lesson_price" } });
+  const lessonPrice = priceSetting ? parseInt(priceSetting.value, 10) : 0;
+
+  // Calculate how many lessons this payment covers
+  const lessonsCount = lessonPrice > 0 ? Math.floor(item.amount / lessonPrice) : 1;
+
+  // Create payment record first
+  const payment = await prisma.payment.create({
+    data: {
+      studentId: matched.id,
+      monoId: item.id,
+      amount: item.amount,
+      lessonsCount,
+      comment: [item.comment, item.description].filter(Boolean).join(" | ") || null,
+      receivedAt: new Date(item.time * 1000),
+    },
+  });
+
+  // Find the next N unpaid upcoming lessons for this student
   const now = new Date();
-  const nextLesson = await prisma.scheduledLesson.findFirst({
+  const upcomingLessons = await prisma.scheduledLesson.findMany({
     where: {
       studentId: matched.id,
       isPaid: false,
       startAt: { gte: now },
     },
     orderBy: { startAt: "asc" },
+    take: lessonsCount,
   });
 
-  const payment = await prisma.payment.create({
-    data: {
-      studentId: matched.id,
-      lessonId: nextLesson?.id ?? null,
-      monoId: item.id,
-      amount: item.amount,
-      comment: [item.comment, item.description].filter(Boolean).join(" | ") || null,
-      receivedAt: new Date(item.time * 1000),
-    },
-  });
-
-  if (nextLesson) {
+  // Mark them all paid and link to this payment
+  for (const lesson of upcomingLessons) {
     await prisma.scheduledLesson.update({
-      where: { id: nextLesson.id },
-      data: { isPaid: true },
+      where: { id: lesson.id },
+      data: { isPaid: true, paymentId: payment.id },
     });
   }
 
   console.log(
-    `[monobank webhook] payment ${payment.id} matched student ${matched.id}`,
-    nextLesson ? `lesson ${nextLesson.id} marked paid` : "no upcoming lesson found"
+    `[monobank webhook] payment ${payment.id} — student ${matched.id}`,
+    `amount: ${item.amount / 100} UAH, price/lesson: ${lessonPrice / 100} UAH`,
+    `covers ${lessonsCount} lesson(s), marked ${upcomingLessons.length} paid`
   );
 
   return new NextResponse("ok", { status: 200 });

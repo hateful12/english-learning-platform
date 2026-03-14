@@ -5,13 +5,14 @@ import { isTeacherLoggedIn } from "@/lib/auth";
 const MONOBANK_TOKEN_KEY = "monobank_token";
 const MONOBANK_CARD_KEY = "monobank_card";
 const APP_URL_KEY = "app_url";
+const LESSON_PRICE_KEY = "lesson_price";
 
 export async function GET() {
   const teacher = await isTeacherLoggedIn();
   if (!teacher) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const rows = await prisma.settings.findMany({
-    where: { key: { in: [MONOBANK_TOKEN_KEY, MONOBANK_CARD_KEY, APP_URL_KEY] } },
+    where: { key: { in: [MONOBANK_TOKEN_KEY, MONOBANK_CARD_KEY, APP_URL_KEY, LESSON_PRICE_KEY] } },
   });
 
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
@@ -20,6 +21,7 @@ export async function GET() {
     hasMonobankToken: !!map[MONOBANK_TOKEN_KEY],
     monobankCard: map[MONOBANK_CARD_KEY] ?? "",
     appUrl: map[APP_URL_KEY] ?? "",
+    lessonPrice: map[LESSON_PRICE_KEY] ? parseInt(map[LESSON_PRICE_KEY], 10) / 100 : "",
   });
 }
 
@@ -34,7 +36,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { action, monobankToken, monobankCard, appUrl } =
+  const { action, monobankToken, monobankCard, appUrl, lessonPrice } =
     (body as Record<string, unknown>) ?? {};
 
   // Save settings
@@ -49,6 +51,13 @@ export async function POST(request: NextRequest) {
     }
     if (typeof appUrl === "string") {
       updates.push({ key: APP_URL_KEY, value: appUrl.trim() });
+    }
+    if (typeof lessonPrice === "number" && lessonPrice > 0) {
+      // Store in kopecks
+      updates.push({ key: LESSON_PRICE_KEY, value: String(Math.round(lessonPrice * 100)) });
+    } else if (lessonPrice === "" || lessonPrice === 0) {
+      // Clear lesson price
+      await prisma.settings.deleteMany({ where: { key: LESSON_PRICE_KEY } });
     }
 
     for (const { key, value } of updates) {

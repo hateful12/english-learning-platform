@@ -10,7 +10,7 @@ export async function GET() {
     orderBy: { receivedAt: "desc" },
     include: {
       student: { select: { id: true, name: true, email: true } },
-      lesson: { select: { id: true, title: true, startAt: true } },
+      lessons: { select: { id: true, title: true, startAt: true }, orderBy: { startAt: "asc" } },
     },
   });
 
@@ -35,80 +35,94 @@ export async function PATCH(request: NextRequest) {
     const lesson = await prisma.scheduledLesson.findUnique({ where: { id: lessonId } });
     if (!lesson) return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
 
-    // Check if a payment already linked to this lesson
-    const existingPayment = await prisma.payment.findUnique({ where: { lessonId } });
-    if (!existingPayment) {
-      // Create a manual payment record
-      const sId = typeof studentId === "string" ? studentId : lesson.studentId;
-      if (!sId) {
-        return NextResponse.json({ error: "No student associated with this lesson" }, { status: 400 });
-      }
-      await prisma.payment.create({
+    const sId = typeof studentId === "string" ? studentId : lesson.studentId;
+    if (!sId) return NextResponse.json({ error: "No student associated" }, { status: 400 });
+
+    // Check if already linked to a payment
+    if (!lesson.paymentId) {
+      const payment = await prisma.payment.create({
         data: {
           studentId: sId,
-          lessonId,
           monoId: `manual_${lessonId}_${Date.now()}`,
           amount: 0,
+          lessonsCount: 1,
           comment: "Manually marked as paid by teacher",
           receivedAt: new Date(),
         },
       });
+      await prisma.scheduledLesson.update({
+        where: { id: lessonId },
+        data: { isPaid: true, paymentId: payment.id },
+      });
+    } else {
+      await prisma.scheduledLesson.update({
+        where: { id: lessonId },
+        data: { isPaid: true },
+      });
     }
-
-    await prisma.scheduledLesson.update({
-      where: { id: lessonId },
-      data: { isPaid: true },
-    });
 
     return NextResponse.json({ ok: true });
   }
 
-  // Manually mark a specific lesson as unpaid (undo)
+  // Manually mark a specific lesson as unpaid
   if (action === "markUnpaid" && typeof lessonId === "string") {
-    const existingPayment = await prisma.payment.findUnique({ where: { lessonId } });
-    if (existingPayment?.comment?.includes("Manually marked")) {
-      await prisma.payment.delete({ where: { id: existingPayment.id } });
-    } else if (existingPayment) {
-      // unlink but keep the payment record
-      await prisma.payment.update({
-        where: { id: existingPayment.id },
-        data: { lessonId: null },
-      });
+    const lesson = await prisma.scheduledLesson.findUnique({ where: { id: lessonId } });
+    if (!lesson) return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
+
+    // If linked to a manual payment, delete it
+    if (lesson.paymentId) {
+      const payment = await prisma.payment.findUnique({ where: { id: lesson.paymentId } });
+      if (payment?.comment?.includes("Manually marked")) {
+        const linkedCount = await prisma.scheduledLesson.count({ where: { paymentId: payment.id } });
+        if (linkedCount <= 1) {
+          await prisma.scheduledLesson.update({ where: { id: lessonId }, data: { paymentId: null, isPaid: false } });
+          await prisma.payment.delete({ where: { id: payment.id } });
+          return NextResponse.json({ ok: true });
+        }
+      }
     }
 
     await prisma.scheduledLesson.update({
       where: { id: lessonId },
-      data: { isPaid: false },
+      data: { isPaid: false, paymentId: null },
     });
 
     return NextResponse.json({ ok: true });
   }
 
   // Assign an unmatched payment to a student
-  if (action === "assignPayment" && typeof body === "object" && body !== null) {
+  if (action === "assignPayment") {
     const { paymentId } = body as Record<string, unknown>;
     if (typeof paymentId !== "string" || typeof studentId !== "string") {
       return NextResponse.json({ error: "paymentId and studentId required" }, { status: 400 });
     }
 
-    const now = new Date();
-    const nextLesson = await prisma.scheduledLesson.findFirst({
-      where: { studentId, isPaid: false, startAt: { gte: now } },
-      orderBy: { startAt: "asc" },
-    });
+    const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!payment) return NextResponse.json({ error: "Payment not found" }, { status: 404 });
 
+    // Recalculate lessonsCount based on lesson price
+    const priceSetting = await prisma.settings.findUnique({ where: { key: "lesson_price" } });
+    const lessonPrice = priceSetting ? parseInt(priceSetting.value, 10) : 0;
+    const lessonsCount = lessonPrice > 0 ? Math.floor(payment.amount / lessonPrice) : 1;
+
+    // Update student assignment and lessonsCount
     await prisma.payment.update({
       where: { id: paymentId },
-      data: {
-        studentId,
-        lessonId: nextLesson?.id ?? null,
-      },
+      data: { studentId, lessonsCount },
     });
 
-    if (nextLesson) {
+    // Find and mark the next N unpaid upcoming lessons
+    const now = new Date();
+    const upcomingLessons = await prisma.scheduledLesson.findMany({
+      where: { studentId, isPaid: false, startAt: { gte: now } },
+      orderBy: { startAt: "asc" },
+      take: lessonsCount,
+    });
+
+    for (const lesson of upcomingLessons) {
       await prisma.scheduledLesson.update({
-        where: { id: nextLesson.id },
-        data: { isPaid: true },
+        where: { id: lesson.id },
+        data: { isPaid: true, paymentId },
       });
     }
 

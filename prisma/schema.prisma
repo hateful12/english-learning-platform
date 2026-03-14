@@ -106,10 +106,11 @@ model ScheduledLesson {
   studentId   String?
   groupId     String?
   isPaid      Boolean  @default(false)
+  paymentId   String?
   createdAt   DateTime @default(now())
   student     Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
   group       Group?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  payment     Payment?
+  payment     Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
 }
 
 // Tracks teacher closing a group homework for an individual student
@@ -121,16 +122,16 @@ model HomeworkStudentClose {
 }
 
 model Payment {
-  id         String           @id @default(cuid())
-  studentId  String
-  lessonId   String?          @unique
-  monoId     String           @unique
-  amount     Int
-  comment    String?
-  receivedAt DateTime
-  createdAt  DateTime         @default(now())
-  student    Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  lesson     ScheduledLesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  id           String            @id @default(cuid())
+  studentId    String
+  monoId       String            @unique
+  amount       Int
+  lessonsCount Int               @default(1)
+  comment      String?
+  receivedAt   DateTime
+  createdAt    DateTime          @default(now())
+  student      Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lessons      ScheduledLesson[]
 }
 
 model Settings {

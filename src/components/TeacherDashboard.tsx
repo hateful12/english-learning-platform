@@ -41,20 +41,21 @@ const TABS: { id: Tab; label: string }[] = [
 type Transaction = {
   id: string;
   studentId: string;
-  lessonId: string | null;
   monoId: string;
   amount: number;
+  lessonsCount: number;
   comment: string | null;
   receivedAt: string;
   createdAt: string;
   student: { id: string; name: string | null; email: string };
-  lesson: { id: string; title: string; startAt: string } | null;
+  lessons: { id: string; title: string; startAt: string }[];
 };
 
 type SettingsData = {
   hasMonobankToken: boolean;
   monobankCard: string;
   appUrl: string;
+  lessonPrice: number | string;
 };
 
 export function TeacherDashboard() {
@@ -64,13 +65,14 @@ export function TeacherDashboard() {
   const [homework, setHomework] = useState<Homework[]>([]);
   const [payments, setPayments] = useState<PaymentInfo[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [settingsData, setSettingsData] = useState<SettingsData>({ hasMonobankToken: false, monobankCard: "", appUrl: "" });
+  const [settingsData, setSettingsData] = useState<SettingsData>({ hasMonobankToken: false, monobankCard: "", appUrl: "", lessonPrice: "" });
   const [loading, setLoading] = useState(true);
 
   // Settings form state
   const [settingsToken, setSettingsToken] = useState("");
   const [settingsCard, setSettingsCard] = useState("");
   const [settingsAppUrl, setSettingsAppUrl] = useState("");
+  const [settingsLessonPrice, setSettingsLessonPrice] = useState<string>("");
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [webhookRegistering, setWebhookRegistering] = useState(false);
@@ -104,6 +106,7 @@ export function TeacherDashboard() {
         setSettingsData(data);
         setSettingsCard(data.monobankCard ?? "");
         setSettingsAppUrl(data.appUrl ?? "");
+        setSettingsLessonPrice(data.lessonPrice !== "" ? String(data.lessonPrice) : "");
       });
   }
 
@@ -147,6 +150,7 @@ export function TeacherDashboard() {
           monobankToken: settingsToken || undefined,
           monobankCard: settingsCard,
           appUrl: settingsAppUrl,
+          lessonPrice: settingsLessonPrice !== "" ? Number(settingsLessonPrice) : 0,
         }),
       });
       if (res.ok) {
@@ -327,15 +331,15 @@ export function TeacherDashboard() {
                     <th className="pb-2 pr-4">Date</th>
                     <th className="pb-2 pr-4">Student</th>
                     <th className="pb-2 pr-4">Amount</th>
-                    <th className="pb-2 pr-4">Comment</th>
-                    <th className="pb-2 pr-4">Lesson</th>
+                    <th className="pb-2 pr-4">Lessons paid</th>
+                    <th className="pb-2 pr-4">Linked lessons</th>
                     <th className="pb-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ink/5">
                   {transactions.map((t) => {
                     const isManual = t.comment?.includes("Manually marked");
-                    const isUnmatched = !t.student.id || students.find((s) => s.id === t.studentId) === undefined;
+                    const isUnmatched = t.lessonsCount === 0 || students.find((s) => s.id === t.studentId) === undefined;
                     return (
                       <tr key={t.id} className="py-2">
                         <td className="py-2 pr-4 whitespace-nowrap text-ink/60">
@@ -352,21 +356,38 @@ export function TeacherDashboard() {
                           )}
                         </td>
                         <td className="py-2 pr-4 whitespace-nowrap font-mono text-ink">
-                          {isManual ? "—" : `₴${(t.amount / 100).toFixed(2)}`}
-                        </td>
-                        <td className="py-2 pr-4 max-w-[200px] truncate text-ink/60">
-                          {isManual ? <span className="italic text-ink/40">manual</span> : (t.comment ?? "—")}
+                          {isManual ? "—" : `₴${(t.amount / 100).toFixed(0)}`}
                         </td>
                         <td className="py-2 pr-4">
-                          {t.lesson ? (
-                            <span className="text-ink/70">
-                              {t.lesson.title}{" "}
-                              <span className="text-ink/40 text-xs">
-                                {new Date(t.lesson.startAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
-                              </span>
-                            </span>
+                          {isManual ? (
+                            <span className="italic text-ink/40 text-xs">manual</span>
                           ) : (
-                            <span className="text-ink/30 italic text-xs">no lesson linked</span>
+                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                              t.lessonsCount > 0 ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                            }`}>
+                              {t.lessonsCount > 0 ? `${t.lessonsCount} lesson${t.lessonsCount > 1 ? "s" : ""}` : "0 — unmatched"}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-4 max-w-[220px]">
+                          {t.lessons.length > 0 ? (
+                            <div className="space-y-0.5">
+                              {t.lessons.map((l) => (
+                                <div key={l.id} className="text-xs text-ink/70">
+                                  {l.title}{" "}
+                                  <span className="text-ink/40">
+                                    {new Date(l.startAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                                  </span>
+                                </div>
+                              ))}
+                              {t.lessonsCount > t.lessons.length && (
+                                <div className="text-xs text-amber-600">
+                                  +{t.lessonsCount - t.lessons.length} more (not yet scheduled)
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-ink/30 italic text-xs">no lessons linked yet</span>
                           )}
                         </td>
                         <td className="py-2">
@@ -425,6 +446,25 @@ export function TeacherDashboard() {
                 placeholder={settingsData.hasMonobankToken ? "Leave blank to keep existing token" : "u…_your_token_here"}
                 className="input w-full"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Lesson price (UAH)</label>
+              <div className="relative w-40">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 text-sm">₴</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={settingsLessonPrice}
+                  onChange={(e) => setSettingsLessonPrice(e.target.value)}
+                  placeholder="e.g. 500"
+                  className="input pl-7 w-full"
+                />
+              </div>
+              <p className="text-xs text-ink/40 mt-1">
+                Used to calculate how many lessons a payment covers. E.g. ₴1500 payment ÷ ₴500 = 3 lessons.
+              </p>
             </div>
 
             <div>

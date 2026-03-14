@@ -117,16 +117,19 @@ function HomeworkSubmit({
 }
 type PaymentInfo = { id: string; content: string; amount: string | null } | null;
 type StudentInfo = { id: string; email: string; name: string | null; paymentCode: string } | null;
+type PublicSettings = { lessonPrice: number | null; monobankCard: string | null } | null;
 
 export function StudentDashboard() {
   const [homework, setHomework] = useState<Homework[]>([]);
   const [payment, setPayment] = useState<PaymentInfo>(null);
   const [studentInfo, setStudentInfo] = useState<StudentInfo>(null);
+  const [publicSettings, setPublicSettings] = useState<PublicSettings>(null);
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveMonth, setArchiveMonth] = useState<string>("");
   const [copiedCode, setCopiedCode] = useState(false);
+  const [lessonsToPay, setLessonsToPay] = useState(1);
 
   function loadHomework() {
     return fetch("/api/homework")
@@ -156,12 +159,14 @@ export function StudentDashboard() {
       fetch("/api/homework").then((r) => safeJson(r, [])),
       fetch("/api/payment").then((r) => safeJson(r, null)),
       fetch("/api/auth/student/session").then((r) => safeJson(r, null)),
-    ]).then(([hw, pay, session]) => {
+      fetch("/api/settings/public").then((r) => safeJson(r, null)),
+    ]).then(([hw, pay, session, settings]) => {
       setHomework(Array.isArray(hw) ? hw : []);
       setPayment(pay);
       if (session?.loggedIn && session.student?.paymentCode) {
         setStudentInfo(session.student);
       }
+      setPublicSettings(settings);
       setLoading(false);
     });
   }, []);
@@ -354,13 +359,46 @@ export function StudentDashboard() {
           Payment for lessons
         </h2>
 
+        {/* Lesson price calculator */}
+        {publicSettings?.lessonPrice && (
+          <div className="mb-5 rounded-xl border border-ink/10 bg-ink/[0.02] p-4 space-y-3">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-ink">₴{publicSettings.lessonPrice}</span>
+              <span className="text-sm text-ink/50">per lesson</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-ink/70 shrink-0">Pay for</label>
+              <div className="flex items-center border border-ink/20 rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setLessonsToPay((n) => Math.max(1, n - 1))}
+                  className="px-3 py-1.5 text-ink/60 hover:bg-ink/5 text-lg font-medium"
+                >−</button>
+                <span className="px-4 py-1.5 font-semibold text-ink min-w-[3rem] text-center">
+                  {lessonsToPay}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLessonsToPay((n) => n + 1)}
+                  className="px-3 py-1.5 text-ink/60 hover:bg-ink/5 text-lg font-medium"
+                >+</button>
+              </div>
+              <span className="text-sm text-ink/70 shrink-0">
+                lesson{lessonsToPay > 1 ? "s" : ""} =
+              </span>
+              <span className="font-bold text-accent text-lg">
+                ₴{(publicSettings.lessonPrice * lessonsToPay).toLocaleString()}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Payment code */}
         {studentInfo?.paymentCode && (
           <div className="mb-5 rounded-xl border border-accent/20 bg-accent/5 p-4">
-            <p className="text-sm font-medium text-ink/70 mb-2">
-              Your payment reference code
-            </p>
+            <p className="text-sm font-medium text-ink/70 mb-1">Your payment reference code</p>
             <p className="text-xs text-ink/50 mb-3">
-              Always include this code in the transfer comment so your payment is matched automatically.
+              Include this code in the transfer comment — your payment will be matched automatically.
             </p>
             <div className="flex items-center gap-3">
               <span className="font-mono text-2xl font-bold tracking-widest text-accent select-all">
@@ -377,17 +415,25 @@ export function StudentDashboard() {
           </div>
         )}
 
-        {!payment ? (
-          <p className="text-ink/50">No payment info yet.</p>
-        ) : (
+        {/* Card / bank details */}
+        {(publicSettings?.monobankCard || payment) && (
           <div className="space-y-1">
-            {payment.amount && (
-              <p className="font-medium text-ink">Amount: {payment.amount}</p>
+            {publicSettings?.monobankCard && (
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm text-ink/60">Send to card:</span>
+                <span className="font-mono font-semibold text-ink tracking-wider">
+                  {publicSettings.monobankCard}
+                </span>
+              </div>
             )}
-            <p className="mt-2 whitespace-pre-wrap text-ink/80">
-              {payment.content}
-            </p>
+            {payment?.content && (
+              <p className="whitespace-pre-wrap text-sm text-ink/70">{payment.content}</p>
+            )}
           </div>
+        )}
+
+        {!publicSettings?.monobankCard && !payment && (
+          <p className="text-ink/50">No payment info yet.</p>
         )}
       </section>
     </div>
