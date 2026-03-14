@@ -85,6 +85,7 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [togglingPaid, setTogglingPaid] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchLessons = useCallback(async () => {
@@ -216,6 +217,23 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
       setError("Network error");
     }
     setDeleting(false);
+  }
+
+  async function handleTogglePaid(lessonId: string, currentlyPaid: boolean) {
+    setTogglingPaid(true);
+    try {
+      await fetch("/api/payments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: currentlyPaid ? "markUnpaid" : "markPaid",
+          lessonId,
+        }),
+      });
+      await fetchLessons();
+    } finally {
+      setTogglingPaid(false);
+    }
   }
 
   const assigneeLabel = (l: ScheduledLesson) => {
@@ -480,10 +498,24 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
               return (
                 <div className={`mt-4 flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
                   lesson.isPaid
-                    ? "bg-green-50 text-green-700 border border-green-200"
-                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                    ? "bg-green-50 border border-green-200"
+                    : "bg-amber-50 border border-amber-200"
                 }`}>
-                  <span>{lesson.isPaid ? "✓ Paid" : "⏳ Awaiting payment"}</span>
+                  <span className={lesson.isPaid ? "text-green-700 font-medium" : "text-amber-700 font-medium"}>
+                    {lesson.isPaid ? "✓ Paid" : "⏳ Awaiting payment"}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={togglingPaid}
+                    onClick={() => handleTogglePaid(lesson.id, lesson.isPaid)}
+                    className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors disabled:opacity-50 ${
+                      lesson.isPaid
+                        ? "bg-white border border-green-300 text-green-700 hover:bg-green-50"
+                        : "bg-white border border-amber-300 text-amber-700 hover:bg-amber-50"
+                    }`}
+                  >
+                    {togglingPaid ? "…" : lesson.isPaid ? "Mark unpaid" : "Mark as paid"}
+                  </button>
                 </div>
               );
             })()}
