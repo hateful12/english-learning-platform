@@ -55,7 +55,6 @@ type SettingsData = {
   hasMonobankToken: boolean;
   monobankCard: string;
   appUrl: string;
-  lessonPrice: number | string;
 };
 
 export function TeacherDashboard() {
@@ -65,14 +64,13 @@ export function TeacherDashboard() {
   const [homework, setHomework] = useState<Homework[]>([]);
   const [payments, setPayments] = useState<PaymentInfo[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [settingsData, setSettingsData] = useState<SettingsData>({ hasMonobankToken: false, monobankCard: "", appUrl: "", lessonPrice: "" });
+  const [settingsData, setSettingsData] = useState<SettingsData>({ hasMonobankToken: false, monobankCard: "", appUrl: "" });
   const [loading, setLoading] = useState(true);
 
   // Settings form state
   const [settingsToken, setSettingsToken] = useState("");
   const [settingsCard, setSettingsCard] = useState("");
   const [settingsAppUrl, setSettingsAppUrl] = useState("");
-  const [settingsLessonPrice, setSettingsLessonPrice] = useState<string>("");
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [webhookRegistering, setWebhookRegistering] = useState(false);
@@ -106,7 +104,6 @@ export function TeacherDashboard() {
         setSettingsData(data);
         setSettingsCard(data.monobankCard ?? "");
         setSettingsAppUrl(data.appUrl ?? "");
-        setSettingsLessonPrice(data.lessonPrice !== "" ? String(data.lessonPrice) : "");
       });
   }
 
@@ -150,7 +147,6 @@ export function TeacherDashboard() {
           monobankToken: settingsToken || undefined,
           monobankCard: settingsCard,
           appUrl: settingsAppUrl,
-          lessonPrice: settingsLessonPrice !== "" ? Number(settingsLessonPrice) : 0,
         }),
       });
       if (res.ok) {
@@ -427,25 +423,6 @@ export function TeacherDashboard() {
                 placeholder={settingsData.hasMonobankToken ? "Leave blank to keep existing token" : "u…_your_token_here"}
                 className="input w-full"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1">Lesson price (UAH)</label>
-              <div className="relative w-40">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 text-sm">₴</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="50"
-                  value={settingsLessonPrice}
-                  onChange={(e) => setSettingsLessonPrice(e.target.value)}
-                  placeholder="e.g. 500"
-                  className="input pl-7 w-full"
-                />
-              </div>
-              <p className="text-xs text-ink/40 mt-1">
-                Used to calculate how many lessons a payment covers. E.g. ₴1500 payment ÷ ₴500 = 3 lessons.
-              </p>
             </div>
 
             <div>
