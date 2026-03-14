@@ -38,7 +38,20 @@ type CalendarEvent = {
   resource: ScheduledLesson;
 };
 
-const DURATION_OPTIONS = [30, 45, 60, 90, 120];
+const DURATION_OPTIONS = [
+  { value: 55, label: "55 min" },
+  { value: 60, label: "60 min" },
+  { value: 90, label: "90 min" },
+];
+
+type RepeatType = "none" | "week" | "2weeks" | "custom";
+
+const REPEAT_OPTIONS: { value: RepeatType; label: string }[] = [
+  { value: "none", label: "No repeat" },
+  { value: "week", label: "Every week" },
+  { value: "2weeks", label: "Every 2 weeks" },
+  { value: "custom", label: "Custom (days)" },
+];
 
 const emptyForm = {
   title: "",
@@ -48,6 +61,9 @@ const emptyForm = {
   notes: "",
   studentId: "",
   groupId: "",
+  repeatType: "none" as RepeatType,
+  customDays: 1,
+  repeatCount: 4,
 };
 
 type FormState = typeof emptyForm;
@@ -68,12 +84,17 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchLessons = useCallback(async () => {
-    const res = await fetch("/api/schedule");
-    if (res.ok) {
-      const data = await res.json();
-      setLessons(data);
+    try {
+      const res = await fetch("/api/schedule");
+      if (res.ok) {
+        const data = await res.json();
+        setLessons(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      // silently fail on fetch
     }
     setLoading(false);
   }, []);
@@ -94,6 +115,7 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
     const localISO = `${defaultStart.getFullYear()}-${pad(defaultStart.getMonth() + 1)}-${pad(defaultStart.getDate())}T${pad(defaultStart.getHours())}:${pad(defaultStart.getMinutes())}`;
     setForm({ ...emptyForm, startAt: localISO });
     setEditingId(null);
+    setError(null);
     setModalOpen(true);
   }
 
@@ -110,8 +132,12 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
       notes: l.notes ?? "",
       studentId: l.studentId ?? "",
       groupId: l.groupId ?? "",
+      repeatType: "none",
+      customDays: 1,
+      repeatCount: 4,
     });
     setEditingId(l.id);
+    setError(null);
     setModalOpen(true);
   }
 
@@ -119,12 +145,23 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
     setModalOpen(false);
     setEditingId(null);
     setForm(emptyForm);
+    setError(null);
+  }
+
+  function repeatDays(): number {
+    if (form.repeatType === "week") return 7;
+    if (form.repeatType === "2weeks") return 14;
+    if (form.repeatType === "custom") return Math.max(1, form.customDays);
+    return 0;
   }
 
   async function handleSave() {
     if (!form.title.trim() || !form.startAt) return;
     setSaving(true);
-    const payload = {
+    setError(null);
+
+    const isRepeating = form.repeatType !== "none";
+    const payload: Record<string, unknown> = {
       title: form.title.trim(),
       startAt: new Date(form.startAt).toISOString(),
       durationMin: form.durationMin,
@@ -134,17 +171,30 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
       groupId: form.groupId || null,
     };
 
+    if (isRepeating && !editingId) {
+      payload.repeatDays = repeatDays();
+      payload.repeatCount = form.repeatCount;
+    }
+
     const url = editingId ? `/api/schedule/${editingId}` : "/api/schedule";
     const method = editingId ? "PATCH" : "POST";
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
 
-    if (res.ok) {
-      await fetchLessons();
-      closeModal();
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        await fetchLessons();
+        closeModal();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error ?? "Something went wrong");
+      }
+    } catch {
+      setError("Network error — please try again");
     }
     setSaving(false);
   }
@@ -152,10 +202,17 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
   async function handleDelete() {
     if (!editingId) return;
     setDeleting(true);
-    const res = await fetch(`/api/schedule/${editingId}`, { method: "DELETE" });
-    if (res.ok) {
-      await fetchLessons();
-      closeModal();
+    try {
+      const res = await fetch(`/api/schedule/${editingId}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchLessons();
+        closeModal();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error ?? "Delete failed");
+      }
+    } catch {
+      setError("Network error");
     }
     setDeleting(false);
   }
@@ -246,7 +303,7 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
             className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
             onClick={closeModal}
           />
-          <div className="relative card w-full max-w-md p-6 shadow-xl bg-white">
+          <div className="relative card w-full max-w-md p-6 shadow-xl bg-white overflow-y-auto max-h-[90vh]">
             <h3 className="text-base font-semibold text-ink mb-4">
               {editingId ? "Edit lesson" : "New lesson"}
             </h3>
@@ -273,14 +330,14 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-ink/60 mb-1">Duration (min)</label>
+                  <label className="block text-xs font-medium text-ink/60 mb-1">Duration</label>
                   <select
                     className="input"
                     value={form.durationMin}
                     onChange={(e) => setForm({ ...form, durationMin: Number(e.target.value) })}
                   >
                     {DURATION_OPTIONS.map((d) => (
-                      <option key={d} value={d}>{d} min</option>
+                      <option key={d.value} value={d.value}>{d.label}</option>
                     ))}
                   </select>
                 </div>
@@ -331,6 +388,74 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
                 </div>
               </div>
 
+              {/* Repeat section — only for new lessons */}
+              {!editingId && (
+                <div className="rounded-lg border border-ink/10 bg-ink/[0.02] p-3 space-y-2.5">
+                  <div>
+                    <label className="block text-xs font-medium text-ink/60 mb-1">Repeat every</label>
+                    <select
+                      className="input"
+                      value={form.repeatType}
+                      onChange={(e) =>
+                        setForm({ ...form, repeatType: e.target.value as RepeatType })
+                      }
+                    >
+                      {REPEAT_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {form.repeatType === "custom" && (
+                    <div>
+                      <label className="block text-xs font-medium text-ink/60 mb-1">
+                        Every how many days?
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        className="input"
+                        value={form.customDays}
+                        onChange={(e) =>
+                          setForm({ ...form, customDays: Math.max(1, Number(e.target.value)) })
+                        }
+                      />
+                    </div>
+                  )}
+
+                  {form.repeatType !== "none" && (
+                    <div>
+                      <label className="block text-xs font-medium text-ink/60 mb-1">
+                        Number of occurrences
+                      </label>
+                      <input
+                        type="number"
+                        min={2}
+                        max={52}
+                        className="input"
+                        value={form.repeatCount}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            repeatCount: Math.min(52, Math.max(2, Number(e.target.value))),
+                          })
+                        }
+                      />
+                      <p className="mt-1 text-[11px] text-ink/40">
+                        Will create {form.repeatCount} lessons (
+                        {form.repeatType === "week"
+                          ? `every week for ${form.repeatCount} weeks`
+                          : form.repeatType === "2weeks"
+                          ? `every 2 weeks for ${form.repeatCount * 2} weeks`
+                          : `every ${form.customDays} day${form.customDays > 1 ? "s" : ""}`}
+                        )
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-medium text-ink/60 mb-1">Notes</label>
                 <textarea
@@ -342,6 +467,10 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
                 />
               </div>
             </div>
+
+            {error && (
+              <p className="mt-3 text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+            )}
 
             <div className="flex justify-between mt-5">
               {editingId ? (
@@ -364,7 +493,13 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
                   disabled={saving || !form.title.trim() || !form.startAt}
                   className="btn-primary text-sm disabled:opacity-50"
                 >
-                  {saving ? "Saving..." : editingId ? "Save changes" : "Create"}
+                  {saving
+                    ? "Saving..."
+                    : editingId
+                    ? "Save changes"
+                    : form.repeatType !== "none"
+                    ? `Create ${form.repeatCount} lessons`
+                    : "Create"}
                 </button>
               </div>
             </div>
