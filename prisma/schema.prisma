@@ -14,8 +14,6 @@ model Student {
   passwordHash      String
   createdAt         DateTime            @default(now())
   homework          Homework[]
-  lessonLinks       LessonLink[]
-  miroLinks         MiroLink[]
   paymentInfos      PaymentInfo[]
   invites           Invite[]
   homeworkResponses HomeworkResponse[]
@@ -60,26 +58,6 @@ model HomeworkResponse {
   homework                   Homework  @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
   student                    Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   @@unique([homeworkId, studentId])
-}
-
-model LessonLink {
-  id        String   @id @default(cuid())
-  title     String
-  url       String
-  studentId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
-}
-
-model MiroLink {
-  id        String   @id @default(cuid())
-  title     String
-  url       String
-  studentId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
 }
 
 model PaymentInfo {

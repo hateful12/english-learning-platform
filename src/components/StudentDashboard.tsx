@@ -115,13 +115,10 @@ function HomeworkSubmit({
     </div>
   );
 }
-type LinkItem = { id: string; title: string; url: string };
 type PaymentInfo = { id: string; content: string; amount: string | null } | null;
 
 export function StudentDashboard() {
   const [homework, setHomework] = useState<Homework[]>([]);
-  const [lessons, setLessons] = useState<LinkItem[]>([]);
-  const [miro, setMiro] = useState<LinkItem[]>([]);
   const [payment, setPayment] = useState<PaymentInfo>(null);
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
@@ -147,13 +144,9 @@ export function StudentDashboard() {
   useEffect(() => {
     Promise.all([
       fetch("/api/homework").then((r) => safeJson(r, [])),
-      fetch("/api/lessons").then((r) => safeJson(r, [])),
-      fetch("/api/miro").then((r) => safeJson(r, [])),
       fetch("/api/payment").then((r) => safeJson(r, null)),
-    ]).then(([hw, les, m, pay]) => {
+    ]).then(([hw, pay]) => {
       setHomework(Array.isArray(hw) ? hw : []);
-      setLessons(Array.isArray(les) ? les : []);
-      setMiro(Array.isArray(m) ? m : []);
       setPayment(pay);
       setLoading(false);
     });
@@ -340,54 +333,6 @@ export function StudentDashboard() {
             </>
           );
         })()}
-      </section>
-
-      <section className="card p-6">
-        <h2 className="mb-4 font-serif text-xl font-semibold text-ink">
-          Lesson links
-        </h2>
-        {lessons.length === 0 ? (
-          <p className="text-ink/50">No lesson links yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {lessons.map((item) => (
-              <li key={item.id}>
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent hover:underline"
-                >
-                  {item.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="card p-6">
-        <h2 className="mb-4 font-serif text-xl font-semibold text-ink">
-          Miro boards
-        </h2>
-        {miro.length === 0 ? (
-          <p className="text-ink/50">No Miro links yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {miro.map((item) => (
-              <li key={item.id}>
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent hover:underline"
-                >
-                  {item.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
       </section>
 
       <section className="card p-6">

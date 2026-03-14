@@ -16,7 +16,7 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: "English with Teacher — Homework & Lessons",
-  description: "Your platform for homework, lesson links, Miro boards, and payment info.",
+  description: "Your platform for homework and payment info.",
 };
 
 export default function RootLayout({

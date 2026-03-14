@@ -37,7 +37,7 @@ export default async function HomePage() {
               Welcome
             </h2>
             <p className="mt-2 text-ink/70">
-              Log in to see your homework, lesson links, Miro boards, and payment info.
+              Log in to see your homework and payment info.
             </p>
             <p className="mt-4 text-sm text-ink/50">
               New here? Ask your teacher for an invite link to create your account.
@@ -61,7 +61,7 @@ export default async function HomePage() {
       <StudentHeader student={student} />
       <main className="mx-auto max-w-4xl px-4 py-8">
         <p className="mb-8 text-ink/70">
-          Your homework, lesson links, Miro boards, and payment info.
+          Your homework and payment info.
         </p>
         <StudentDashboard />
       </main>

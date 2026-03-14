@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { HomeworkEditor } from "./HomeworkEditor";
-import { LinkEditor } from "./LinkEditor";
 import { PaymentEditor } from "./PaymentEditor";
 import { InviteSection } from "./InviteSection";
 import { GroupEditor, Group } from "./GroupEditor";
@@ -25,18 +24,15 @@ type Homework = {
   closedForStudents?: string[];
   responses?: HomeworkResponse[];
 };
-type LinkItem = { id: string; title: string; url: string; studentId?: string | null };
 type PaymentInfo = { id: string; content: string; amount: string | null; studentId?: string | null };
 
-type Tab = "homework" | "groups" | "students" | "links" | "miro" | "payment" | "schedule";
+type Tab = "homework" | "groups" | "students" | "payment" | "schedule";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "homework", label: "Homework" },
   { id: "schedule", label: "Schedule" },
   { id: "groups", label: "Groups" },
   { id: "students", label: "Students" },
-  { id: "links", label: "Lesson links" },
-  { id: "miro", label: "Miro boards" },
   { id: "payment", label: "Payment" },
 ];
 
@@ -45,8 +41,6 @@ export function TeacherDashboard() {
   const [students, setStudents] = useState<Student[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [homework, setHomework] = useState<Homework[]>([]);
-  const [lessons, setLessons] = useState<LinkItem[]>([]);
-  const [miro, setMiro] = useState<LinkItem[]>([]);
   const [payments, setPayments] = useState<PaymentInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -56,15 +50,11 @@ export function TeacherDashboard() {
       fetch("/api/students").then((r) => r.json()),
       fetch("/api/groups").then((r) => r.json()),
       fetch("/api/homework").then((r) => r.json()),
-      fetch("/api/lessons").then((r) => r.json()),
-      fetch("/api/miro").then((r) => r.json()),
       fetch("/api/payment").then((r) => r.json()),
-    ]).then(([st, gr, hw, les, m, pay]) => {
+    ]).then(([st, gr, hw, pay]) => {
       setStudents(Array.isArray(st) ? st : []);
       setGroups(Array.isArray(gr) ? gr : []);
       setHomework(Array.isArray(hw) ? hw : []);
-      setLessons(Array.isArray(les) ? les : []);
-      setMiro(Array.isArray(m) ? m : []);
       setPayments(Array.isArray(pay) ? pay : []);
       setLoading(false);
     });
@@ -176,34 +166,6 @@ export function TeacherDashboard() {
             <InviteSection />
           </section>
         </div>
-      )}
-
-      {activeTab === "links" && (
-        <section className="card p-6">
-          <h2 className="mb-4 font-serif text-xl font-semibold text-ink">Lesson links</h2>
-          <LinkEditor
-            items={lessons}
-            api="/api/lessons"
-            students={students}
-            onAdd={load}
-            onDelete={load}
-            onUpdate={load}
-          />
-        </section>
-      )}
-
-      {activeTab === "miro" && (
-        <section className="card p-6">
-          <h2 className="mb-4 font-serif text-xl font-semibold text-ink">Miro boards</h2>
-          <LinkEditor
-            items={miro}
-            api="/api/miro"
-            students={students}
-            onAdd={load}
-            onDelete={load}
-            onUpdate={load}
-          />
-        </section>
       )}
 
       {activeTab === "payment" && (
