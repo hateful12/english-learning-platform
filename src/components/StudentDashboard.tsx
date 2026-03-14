@@ -115,13 +115,11 @@ function HomeworkSubmit({
     </div>
   );
 }
-type PaymentInfo = { id: string; content: string; amount: string | null } | null;
 type StudentInfo = { id: string; email: string; name: string | null; paymentCode: string } | null;
 type PublicSettings = { lessonPrice: number | null; monobankCard: string | null } | null;
 
 export function StudentDashboard() {
   const [homework, setHomework] = useState<Homework[]>([]);
-  const [payment, setPayment] = useState<PaymentInfo>(null);
   const [studentInfo, setStudentInfo] = useState<StudentInfo>(null);
   const [publicSettings, setPublicSettings] = useState<PublicSettings>(null);
   const [loading, setLoading] = useState(true);
@@ -157,12 +155,10 @@ export function StudentDashboard() {
   useEffect(() => {
     Promise.all([
       fetch("/api/homework").then((r) => safeJson(r, [])),
-      fetch("/api/payment").then((r) => safeJson(r, null)),
       fetch("/api/auth/student/session").then((r) => safeJson(r, null)),
       fetch("/api/settings/public").then((r) => safeJson(r, null)),
-    ]).then(([hw, pay, session, settings]) => {
+    ]).then(([hw, session, settings]) => {
       setHomework(Array.isArray(hw) ? hw : []);
-      setPayment(pay);
       if (session?.loggedIn && session.student?.paymentCode) {
         setStudentInfo(session.student);
       }
@@ -416,24 +412,13 @@ export function StudentDashboard() {
         )}
 
         {/* Card / bank details */}
-        {(publicSettings?.monobankCard || payment) && (
-          <div className="space-y-1">
-            {publicSettings?.monobankCard && (
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm text-ink/60">Send to card:</span>
-                <span className="font-mono font-semibold text-ink tracking-wider">
-                  {publicSettings.monobankCard}
-                </span>
-              </div>
-            )}
-            {payment?.content && (
-              <p className="whitespace-pre-wrap text-sm text-ink/70">{payment.content}</p>
-            )}
+        {publicSettings?.monobankCard && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-ink/60">Send to card:</span>
+            <span className="font-mono font-semibold text-ink tracking-wider">
+              {publicSettings.monobankCard}
+            </span>
           </div>
-        )}
-
-        {!publicSettings?.monobankCard && !payment && (
-          <p className="text-ink/50">No payment info yet.</p>
         )}
       </section>
     </div>
