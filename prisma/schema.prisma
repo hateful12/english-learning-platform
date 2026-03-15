@@ -8,20 +8,21 @@ datasource db {
 }
 
 model Student {
-  id                String              @id @default(cuid())
-  email             String              @unique
-  name              String?
-  passwordHash      String
-  paymentCode       String              @unique @default(cuid())
-  lessonPrice       Int?
-  createdAt         DateTime            @default(now())
-  homework          Homework[]
-  paymentInfos      PaymentInfo[]
-  invites           Invite[]
-  homeworkResponses HomeworkResponse[]
-  groups            StudentGroup[]
-  scheduledLessons  ScheduledLesson[]
-  payments          Payment[]
+  id                  String                @id @default(cuid())
+  email               String                @unique
+  name                String?
+  passwordHash        String
+  paymentCode         String                @unique @default(cuid())
+  lessonPrice         Int?
+  createdAt           DateTime              @default(now())
+  homework            Homework[]
+  paymentInfos        PaymentInfo[]
+  invites             Invite[]
+  homeworkResponses   HomeworkResponse[]
+  groups              StudentGroup[]
+  scheduledLessons    ScheduledLesson[]
+  payments            Payment[]
+  groupLessonPayments GroupLessonPayment[]
 }
 
 model Invite {
@@ -99,20 +100,21 @@ model StudentGroup {
 }
 
 model ScheduledLesson {
-  id          String   @id @default(cuid())
-  title       String
-  startAt     DateTime
-  durationMin Int      @default(60)
-  zoomUrl     String?
-  notes       String?
-  studentId   String?
-  groupId     String?
-  isPaid      Boolean  @default(false)
-  paymentId   String?
-  createdAt   DateTime @default(now())
-  student     Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
-  group       Group?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  payment     Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  id                  String               @id @default(cuid())
+  title               String
+  startAt             DateTime
+  durationMin         Int                  @default(60)
+  zoomUrl             String?
+  notes               String?
+  studentId           String?
+  groupId             String?
+  isPaid              Boolean              @default(false)
+  paymentId           String?
+  createdAt           DateTime             @default(now())
+  student             Student?             @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  group               Group?              @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  payment             Payment?             @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  groupLessonPayments GroupLessonPayment[]
 }
 
 // Tracks teacher closing a group homework for an individual student
@@ -124,16 +126,28 @@ model HomeworkStudentClose {
 }
 
 model Payment {
-  id           String            @id @default(cuid())
-  studentId    String
-  monoId       String            @unique
-  amount       Int
-  lessonsCount Int               @default(1)
-  comment      String?
-  receivedAt   DateTime
-  createdAt    DateTime          @default(now())
-  student      Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  lessons      ScheduledLesson[]
+  id                  String               @id @default(cuid())
+  studentId           String
+  monoId              String               @unique
+  amount              Int
+  lessonsCount        Int                  @default(1)
+  comment             String?
+  receivedAt          DateTime
+  createdAt           DateTime             @default(now())
+  student             Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lessons             ScheduledLesson[]
+  groupLessonPayments GroupLessonPayment[]
+}
+
+model GroupLessonPayment {
+  studentId  String
+  lessonId   String
+  isPaid     Boolean          @default(false)
+  paymentId  String?
+  student    Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lesson     ScheduledLesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  payment    Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  @@id([studentId, lessonId])
 }
 
 model Settings {

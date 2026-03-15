@@ -20,7 +20,33 @@ type LessonRow = {
   g_name: string | null;
 };
 
-function formatLesson(row: LessonRow) {
+type GroupPaymentRow = {
+  lessonId: string;
+  studentId: string;
+  studentName: string | null;
+  studentEmail: string;
+  isPaid: number | boolean;
+  paymentId: string | null;
+};
+
+async function formatLesson(row: LessonRow) {
+  let groupPayments: Array<{ studentId: string; name: string | null; email: string; isPaid: boolean; paymentId: string | null }> | undefined;
+  if (row.groupId) {
+    const gpRows = await prisma.$queryRaw<GroupPaymentRow[]>`
+      SELECT glp.lessonId, glp.studentId, glp.isPaid, glp.paymentId,
+             s.name AS studentName, s.email AS studentEmail
+      FROM "GroupLessonPayment" glp
+      JOIN "Student" s ON s.id = glp.studentId
+      WHERE glp.lessonId = ${row.id}
+    `;
+    groupPayments = gpRows.map((g) => ({
+      studentId: g.studentId,
+      name: g.studentName,
+      email: g.studentEmail,
+      isPaid: Boolean(g.isPaid),
+      paymentId: g.paymentId,
+    }));
+  }
   return {
     id: row.id,
     title: row.title,
@@ -34,6 +60,7 @@ function formatLesson(row: LessonRow) {
     createdAt: row.createdAt,
     student: row.s_id ? { id: row.s_id, email: row.s_email, name: row.s_name } : null,
     group: row.g_id ? { id: row.g_id, name: row.g_name } : null,
+    ...(groupPayments !== undefined ? { groupPayments } : {}),
   };
 }
 
@@ -98,6 +125,25 @@ export async function PATCH(
       ...args
     );
 
+    // If groupId changed, sync GroupLessonPayment rows
+    if (b.groupId !== undefined) {
+      const newGroupId = b.groupId && typeof b.groupId === "string" ? b.groupId : null;
+      if (newGroupId) {
+        const members = await prisma.$queryRaw<{ studentId: string }[]>`
+          SELECT studentId FROM "StudentGroup" WHERE groupId = ${newGroupId}
+        `;
+        for (const m of members) {
+          await prisma.$executeRaw`
+            INSERT OR IGNORE INTO "GroupLessonPayment" (studentId, lessonId, isPaid)
+            VALUES (${m.studentId}, ${id}, 0)
+          `;
+        }
+      } else {
+        // Group removed — delete all GroupLessonPayment rows
+        await prisma.$executeRaw`DELETE FROM "GroupLessonPayment" WHERE lessonId = ${id}`;
+      }
+    }
+
     const rows = await prisma.$queryRaw<LessonRow[]>`
       SELECT
         sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
@@ -114,7 +160,7 @@ export async function PATCH(
     `;
 
     if (!rows[0]) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json(formatLesson(rows[0]));
+    return NextResponse.json(await formatLesson(rows[0]));
   } catch (err) {
     console.error("PATCH /api/schedule/[id] error:", err);
     return NextResponse.json({ error: "Failed to update lesson" }, { status: 500 });

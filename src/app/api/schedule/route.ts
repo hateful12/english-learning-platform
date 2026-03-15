@@ -13,6 +13,8 @@ type LessonRow = {
   studentId: string | null;
   groupId: string | null;
   isPaid: number | boolean;
+  // for student queries: per-student isPaid from GroupLessonPayment (nullable when no record yet)
+  glp_isPaid: number | boolean | null;
   createdAt: string;
   s_id: string | null;
   s_email: string | null;
@@ -21,14 +23,31 @@ type LessonRow = {
   g_name: string | null;
 };
 
-function formatLesson(row: LessonRow, isTeacher: boolean) {
-  const isPaid = Boolean(row.isPaid);
+type GroupPaymentRow = {
+  lessonId: string;
+  studentId: string;
+  studentName: string | null;
+  studentEmail: string;
+  isPaid: number | boolean;
+  paymentId: string | null;
+};
+
+function formatLesson(
+  row: LessonRow,
+  isTeacher: boolean,
+  groupPayments?: Array<{ studentId: string; name: string | null; email: string; isPaid: boolean; paymentId: string | null }>
+) {
+  // For group lessons viewed by a student, use GroupLessonPayment.isPaid
+  // For individual lessons, use ScheduledLesson.isPaid
+  const isPaid = row.groupId && !isTeacher
+    ? Boolean(row.glp_isPaid)
+    : Boolean(row.isPaid);
+
   return {
     id: row.id,
     title: row.title,
     startAt: row.startAt,
     durationMin: row.durationMin,
-    // Hide zoomUrl from students until lesson is paid
     zoomUrl: isTeacher || isPaid ? row.zoomUrl : null,
     notes: row.notes,
     studentId: row.studentId,
@@ -37,6 +56,7 @@ function formatLesson(row: LessonRow, isTeacher: boolean) {
     createdAt: row.createdAt,
     student: row.s_id ? { id: row.s_id, email: row.s_email, name: row.s_name } : null,
     group: row.g_id ? { id: row.g_id, name: row.g_name } : null,
+    ...(isTeacher && groupPayments ? { groupPayments } : {}),
   };
 }
 
@@ -49,6 +69,7 @@ export async function GET() {
         SELECT
           sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
           sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
+          NULL AS glp_isPaid,
           s.id    AS s_id,
           s.email AS s_email,
           s.name  AS s_name,
@@ -59,7 +80,42 @@ export async function GET() {
         LEFT JOIN "Group"   g ON g.id = sl.groupId
         ORDER BY sl.startAt ASC
       `;
-      return NextResponse.json(rows.map((r) => formatLesson(r, true)));
+
+      // Fetch GroupLessonPayment records for all group lessons
+      const groupLessonIds = rows.filter((r) => r.groupId).map((r) => r.id);
+      let groupPaymentRows: GroupPaymentRow[] = [];
+      if (groupLessonIds.length > 0) {
+        const placeholders = groupLessonIds.map(() => "?").join(",");
+        groupPaymentRows = await prisma.$queryRawUnsafe<GroupPaymentRow[]>(
+          `SELECT glp.lessonId, glp.studentId, glp.isPaid, glp.paymentId,
+                  s.name AS studentName, s.email AS studentEmail
+           FROM "GroupLessonPayment" glp
+           JOIN "Student" s ON s.id = glp.studentId
+           WHERE glp.lessonId IN (${placeholders})`,
+          ...groupLessonIds
+        );
+      }
+
+      // Group the payment rows by lessonId
+      const paymentsByLesson = new Map<string, GroupPaymentRow[]>();
+      for (const gpr of groupPaymentRows) {
+        if (!paymentsByLesson.has(gpr.lessonId)) paymentsByLesson.set(gpr.lessonId, []);
+        paymentsByLesson.get(gpr.lessonId)!.push(gpr);
+      }
+
+      return NextResponse.json(
+        rows.map((r) => {
+          const gprs = paymentsByLesson.get(r.id) ?? [];
+          const gp = gprs.map((g) => ({
+            studentId: g.studentId,
+            name: g.studentName,
+            email: g.studentEmail,
+            isPaid: Boolean(g.isPaid),
+            paymentId: g.paymentId,
+          }));
+          return formatLesson(r, true, r.groupId ? gp : undefined);
+        })
+      );
     }
 
     const studentId = await getStudentId();
@@ -77,13 +133,16 @@ export async function GET() {
         `SELECT
           sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
           sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
+          glp.isPaid AS glp_isPaid,
           g.id   AS g_id,
           g.name AS g_name,
           NULL AS s_id, NULL AS s_email, NULL AS s_name
         FROM "ScheduledLesson" sl
         LEFT JOIN "Group" g ON g.id = sl.groupId
+        LEFT JOIN "GroupLessonPayment" glp ON glp.lessonId = sl.id AND glp.studentId = ?
         WHERE sl.studentId = ? OR sl.groupId IN (${placeholders})
         ORDER BY sl.startAt ASC`,
+        studentId,
         studentId,
         ...groupIds
       );
@@ -92,6 +151,7 @@ export async function GET() {
         SELECT
           sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
           sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
+          NULL AS glp_isPaid,
           g.id   AS g_id,
           g.name AS g_name,
           NULL AS s_id, NULL AS s_email, NULL AS s_name
@@ -143,6 +203,15 @@ export async function POST(request: NextRequest) {
     const occurrences = typeof repeatCount === "number" && repeatCount > 1 ? repeatCount : 1;
     const intervalDays = typeof repeatDays === "number" && repeatDays > 0 ? repeatDays : 0;
 
+    // If this is a group lesson, get the group members to pre-create GroupLessonPayment rows
+    let groupMemberIds: string[] = [];
+    if (gId) {
+      const members = await prisma.$queryRaw<{ studentId: string }[]>`
+        SELECT studentId FROM "StudentGroup" WHERE groupId = ${gId}
+      `;
+      groupMemberIds = members.map((m) => m.studentId);
+    }
+
     const created: ReturnType<typeof formatLesson>[] = [];
 
     for (let i = 0; i < occurrences; i++) {
@@ -156,10 +225,19 @@ export async function POST(request: NextRequest) {
         VALUES (${id}, ${title.trim()}, ${startISO}, ${dur}, ${zoom}, ${notesVal}, ${sId}, ${gId}, 0, ${now})
       `;
 
+      // Pre-create GroupLessonPayment records for each group member
+      for (const memberId of groupMemberIds) {
+        await prisma.$executeRaw`
+          INSERT OR IGNORE INTO "GroupLessonPayment" (studentId, lessonId, isPaid)
+          VALUES (${memberId}, ${id}, 0)
+        `;
+      }
+
       const rows = await prisma.$queryRaw<LessonRow[]>`
         SELECT
           sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
           sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
+          NULL AS glp_isPaid,
           s.id    AS s_id,
           s.email AS s_email,
           s.name  AS s_name,
@@ -170,7 +248,25 @@ export async function POST(request: NextRequest) {
         LEFT JOIN "Group"   g ON g.id = sl.groupId
         WHERE sl.id = ${id}
       `;
-      if (rows[0]) created.push(formatLesson(rows[0], true));
+      if (rows[0]) {
+        const gpRows = groupMemberIds.length > 0
+          ? await prisma.$queryRaw<GroupPaymentRow[]>`
+              SELECT glp.lessonId, glp.studentId, glp.isPaid, glp.paymentId,
+                     s.name AS studentName, s.email AS studentEmail
+              FROM "GroupLessonPayment" glp
+              JOIN "Student" s ON s.id = glp.studentId
+              WHERE glp.lessonId = ${id}
+            `
+          : [];
+        const gp = gpRows.map((g) => ({
+          studentId: g.studentId,
+          name: g.studentName,
+          email: g.studentEmail,
+          isPaid: Boolean(g.isPaid),
+          paymentId: g.paymentId,
+        }));
+        created.push(formatLesson(rows[0], true, gId ? gp : undefined));
+      }
     }
 
     return NextResponse.json(created.length === 1 ? created[0] : created);

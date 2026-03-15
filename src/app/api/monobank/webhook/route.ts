@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     where: { id: matched.id },
     select: {
       lessonPrice: true,
-      groups: { select: { group: { select: { lessonPrice: true } } } },
+      groups: { select: { group: { select: { id: true, lessonPrice: true } } } },
     },
   });
 
@@ -110,30 +110,75 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // Find the next N unpaid upcoming lessons for this student
   const now = new Date();
-  const upcomingLessons = await prisma.scheduledLesson.findMany({
-    where: {
-      studentId: matched.id,
-      isPaid: false,
-      startAt: { gte: now },
-    },
-    orderBy: { startAt: "asc" },
-    take: lessonsCount,
-  });
+  let markedCount = 0;
+  let remaining = lessonsCount;
 
-  // Mark them all paid and link to this payment
-  for (const lesson of upcomingLessons) {
-    await prisma.scheduledLesson.update({
-      where: { id: lesson.id },
-      data: { isPaid: true, paymentId: payment.id },
+  // 1. Mark individual lessons (studentId = matched.id)
+  if (remaining > 0) {
+    const individualLessons = await prisma.scheduledLesson.findMany({
+      where: {
+        studentId: matched.id,
+        isPaid: false,
+        startAt: { gte: now },
+      },
+      orderBy: { startAt: "asc" },
+      take: remaining,
     });
+
+    for (const lesson of individualLessons) {
+      await prisma.scheduledLesson.update({
+        where: { id: lesson.id },
+        data: { isPaid: true, paymentId: payment.id },
+      });
+      markedCount++;
+      remaining--;
+    }
+  }
+
+  // 2. Mark group lessons via GroupLessonPayment
+  if (remaining > 0 && studentWithGroups?.groups.length) {
+    const groupIds = studentWithGroups.groups.map((g) => g.group.id);
+
+    // Find upcoming group lessons where this student doesn't yet have a paid GroupLessonPayment
+    for (const groupId of groupIds) {
+      if (remaining <= 0) break;
+
+      // Get all upcoming lessons for this group, ordered by startAt
+      const groupLessons = await prisma.scheduledLesson.findMany({
+        where: {
+          groupId,
+          startAt: { gte: now },
+        },
+        orderBy: { startAt: "asc" },
+      });
+
+      for (const lesson of groupLessons) {
+        if (remaining <= 0) break;
+
+        // Upsert GroupLessonPayment — mark paid for this student
+        const existingGlp = await prisma.groupLessonPayment.findUnique({
+          where: { studentId_lessonId: { studentId: matched.id, lessonId: lesson.id } },
+        });
+
+        if (existingGlp?.isPaid) continue; // already paid
+
+        await prisma.groupLessonPayment.upsert({
+          where: { studentId_lessonId: { studentId: matched.id, lessonId: lesson.id } },
+          update: { isPaid: true, paymentId: payment.id },
+          create: { studentId: matched.id, lessonId: lesson.id, isPaid: true, paymentId: payment.id },
+        });
+
+        markedCount++;
+        remaining--;
+      }
+    }
   }
 
   console.log(
     `[monobank webhook] payment ${payment.id} — student ${matched.id}`,
     `amount: ${item.amount / 100} UAH, price/lesson: ${lessonPrice / 100} UAH`,
-    `covers ${lessonsCount} lesson(s), marked ${upcomingLessons.length} paid`
+    `covers ${lessonsCount} lesson(s), marked ${markedCount} paid`
   );
 
   return new NextResponse("ok", { status: 200 });
