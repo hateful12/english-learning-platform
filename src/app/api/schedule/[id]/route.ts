@@ -32,6 +32,14 @@ type GroupPaymentRow = {
 async function formatLesson(row: LessonRow) {
   let groupPayments: Array<{ studentId: string; name: string | null; email: string; isPaid: boolean; paymentId: string | null }> | undefined;
   if (row.groupId) {
+    // Get all current group members
+    const members = await prisma.$queryRaw<{ studentId: string; studentName: string | null; studentEmail: string }[]>`
+      SELECT sg.studentId, s.name AS studentName, s.email AS studentEmail
+      FROM "StudentGroup" sg
+      JOIN "Student" s ON s.id = sg.studentId
+      WHERE sg.groupId = ${row.groupId}
+    `;
+    // Get existing payment records
     const gpRows = await prisma.$queryRaw<GroupPaymentRow[]>`
       SELECT glp.lessonId, glp.studentId, glp.isPaid, glp.paymentId,
              s.name AS studentName, s.email AS studentEmail
@@ -39,13 +47,18 @@ async function formatLesson(row: LessonRow) {
       JOIN "Student" s ON s.id = glp.studentId
       WHERE glp.lessonId = ${row.id}
     `;
-    groupPayments = gpRows.map((g) => ({
-      studentId: g.studentId,
-      name: g.studentName,
-      email: g.studentEmail,
-      isPaid: Boolean(g.isPaid),
-      paymentId: g.paymentId,
-    }));
+    const paymentByStudent = new Map(gpRows.map((g) => [g.studentId, g]));
+    // Merge: all members with their payment status (default: unpaid)
+    groupPayments = members.map((m) => {
+      const existing = paymentByStudent.get(m.studentId);
+      return {
+        studentId: m.studentId,
+        name: m.studentName,
+        email: m.studentEmail,
+        isPaid: existing ? Boolean(existing.isPaid) : false,
+        paymentId: existing?.paymentId ?? null,
+      };
+    });
   }
   return {
     id: row.id,

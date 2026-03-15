@@ -81,6 +81,27 @@ export async function GET() {
         ORDER BY sl.startAt ASC
       `;
 
+      // Fetch all group members for groups that have lessons
+      const groupIds = [...new Set(rows.filter((r) => r.groupId).map((r) => r.groupId as string))];
+      type MemberRow = { groupId: string; studentId: string; studentName: string | null; studentEmail: string };
+      let allGroupMembers: MemberRow[] = [];
+      if (groupIds.length > 0) {
+        const placeholders = groupIds.map(() => "?").join(",");
+        allGroupMembers = await prisma.$queryRawUnsafe<MemberRow[]>(
+          `SELECT sg.groupId, sg.studentId, s.name AS studentName, s.email AS studentEmail
+           FROM "StudentGroup" sg
+           JOIN "Student" s ON s.id = sg.studentId
+           WHERE sg.groupId IN (${placeholders})`,
+          ...groupIds
+        );
+      }
+      // Index members by groupId
+      const membersByGroup = new Map<string, MemberRow[]>();
+      for (const m of allGroupMembers) {
+        if (!membersByGroup.has(m.groupId)) membersByGroup.set(m.groupId, []);
+        membersByGroup.get(m.groupId)!.push(m);
+      }
+
       // Fetch GroupLessonPayment records for all group lessons
       const groupLessonIds = rows.filter((r) => r.groupId).map((r) => r.id);
       let groupPaymentRows: GroupPaymentRow[] = [];
@@ -96,24 +117,28 @@ export async function GET() {
         );
       }
 
-      // Group the payment rows by lessonId
-      const paymentsByLesson = new Map<string, GroupPaymentRow[]>();
+      // Index payment rows by lessonId + studentId
+      const paymentByLessonStudent = new Map<string, GroupPaymentRow>();
       for (const gpr of groupPaymentRows) {
-        if (!paymentsByLesson.has(gpr.lessonId)) paymentsByLesson.set(gpr.lessonId, []);
-        paymentsByLesson.get(gpr.lessonId)!.push(gpr);
+        paymentByLessonStudent.set(`${gpr.lessonId}:${gpr.studentId}`, gpr);
       }
 
       return NextResponse.json(
         rows.map((r) => {
-          const gprs = paymentsByLesson.get(r.id) ?? [];
-          const gp = gprs.map((g) => ({
-            studentId: g.studentId,
-            name: g.studentName,
-            email: g.studentEmail,
-            isPaid: Boolean(g.isPaid),
-            paymentId: g.paymentId,
-          }));
-          return formatLesson(r, true, r.groupId ? gp : undefined);
+          if (!r.groupId) return formatLesson(r, true);
+          // Merge all group members with their payment status (default: unpaid)
+          const members = membersByGroup.get(r.groupId) ?? [];
+          const gp = members.map((m) => {
+            const existing = paymentByLessonStudent.get(`${r.id}:${m.studentId}`);
+            return {
+              studentId: m.studentId,
+              name: m.studentName,
+              email: m.studentEmail,
+              isPaid: existing ? Boolean(existing.isPaid) : false,
+              paymentId: existing?.paymentId ?? null,
+            };
+          });
+          return formatLesson(r, true, gp);
         })
       );
     }

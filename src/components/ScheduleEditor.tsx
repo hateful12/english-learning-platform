@@ -624,9 +624,17 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
               // ── Group lesson payment section (per student) ─────────────────
               const gps = lesson.groupPayments ?? [];
               if (gps.length === 0) return null;
+              const paidTotal = gps.filter((g) => g.isPaid).length;
               return (
                 <div className="mt-4 space-y-2">
-                  <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide">Payment per student</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide">Payment per student</p>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                      paidTotal === gps.length ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                    }`}>
+                      {paidTotal}/{gps.length} paid
+                    </span>
+                  </div>
                   <ul className="space-y-1.5">
                     {gps.map((gp) => (
                       <li key={gp.studentId} className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
