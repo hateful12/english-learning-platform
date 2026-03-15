@@ -184,14 +184,29 @@ export async function POST(request: NextRequest) {
         ? JSON.stringify(attachments)
         : "[]";
 
-    // Auto-close previous active homework for the same target before creating new one
+    // Auto-close previous active homework only for students who have received teacher feedback
     if (groupId && typeof groupId === "string") {
-      await prisma.$executeRaw`UPDATE "Homework" SET status = 'closed' WHERE groupId = ${groupId} AND status = 'active'`;
+      // Per-student close: mark closed only for group members whose response already has feedback
+      await prisma.$executeRaw`
+        INSERT OR IGNORE INTO "HomeworkStudentClose" (homeworkId, studentId, closedAt)
+        SELECT hr.homeworkId, hr.studentId, datetime('now')
+        FROM "HomeworkResponse" hr
+        INNER JOIN "Homework" h ON hr.homeworkId = h.id
+        WHERE h.groupId = ${groupId} AND h.status = 'active'
+          AND hr.teacherFeedback IS NOT NULL AND hr.teacherFeedback != ''
+      `;
     } else if (studentId && typeof studentId === "string") {
-      await prisma.homework.updateMany({
-        where: { studentId: studentId as string, status: "active" },
-        data: { status: "closed" },
-      });
+      // Close individual homework only if the teacher has already given feedback on it
+      await prisma.$executeRaw`
+        UPDATE "Homework" SET status = 'closed'
+        WHERE studentId = ${studentId} AND status = 'active'
+          AND EXISTS (
+            SELECT 1 FROM "HomeworkResponse"
+            WHERE homeworkId = "Homework".id
+              AND studentId = ${studentId}
+              AND teacherFeedback IS NOT NULL AND teacherFeedback != ''
+          )
+      `;
     }
 
     // Create without groupId first (old client doesn't know the field)
