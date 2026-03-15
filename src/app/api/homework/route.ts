@@ -184,6 +184,16 @@ export async function POST(request: NextRequest) {
         ? JSON.stringify(attachments)
         : "[]";
 
+    // Auto-close previous active homework for the same target before creating new one
+    if (groupId && typeof groupId === "string") {
+      await prisma.$executeRaw`UPDATE "Homework" SET status = 'closed' WHERE groupId = ${groupId} AND status = 'active'`;
+    } else if (studentId && typeof studentId === "string") {
+      await prisma.homework.updateMany({
+        where: { studentId: studentId as string, status: "active" },
+        data: { status: "closed" },
+      });
+    }
+
     // Create without groupId first (old client doesn't know the field)
     const item = await prisma.homework.create({
       data: {
