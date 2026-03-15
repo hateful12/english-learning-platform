@@ -7,6 +7,7 @@ import { GroupEditor, Group } from "./GroupEditor";
 import { ScheduleEditor } from "./ScheduleEditor";
 
 type Student = { id: string; email: string; name: string | null; paymentCode?: string; lessonPrice?: number | null; createdAt?: string };
+type StudentLevel = { level: string; score: number; completedAt: string } | null;
 type HomeworkResponse = {
   id: string;
   response: string;
@@ -62,6 +63,7 @@ export function TeacherDashboard() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [settingsData, setSettingsData] = useState<SettingsData>({ hasMonobankToken: false, monobankCard: "", appUrl: "" });
   const [loading, setLoading] = useState(true);
+  const [studentLevels, setStudentLevels] = useState<Record<string, StudentLevel>>({});
 
   // Settings form state
   const [settingsToken, setSettingsToken] = useState("");
@@ -85,6 +87,17 @@ export function TeacherDashboard() {
     });
   }
 
+  function loadStudentLevels() {
+    fetch("/api/assessment")
+      .then((r) => r.json())
+      .then((data: Record<string, StudentLevel>) => {
+        if (data && typeof data === "object" && !Array.isArray(data)) {
+          setStudentLevels(data);
+        }
+      })
+      .catch(() => {});
+  }
+
   function loadTransactions() {
     fetch("/api/payments")
       .then((r) => r.json())
@@ -105,6 +118,7 @@ export function TeacherDashboard() {
     load();
     loadTransactions();
     loadSettings();
+    loadStudentLevels();
   }, []);
 
   async function togglePaid(lessonId: string, currentlyPaid: boolean) {
@@ -251,6 +265,7 @@ export function TeacherDashboard() {
                       key={s.id}
                       student={s}
                       group={group ?? null}
+                      level={studentLevels[s.id] ?? null}
                       onPriceChange={load}
                     />
                   );
@@ -472,13 +487,24 @@ export function TeacherDashboard() {
   );
 }
 
+const LEVEL_STYLES: Record<string, string> = {
+  A1: "bg-gray-100 text-gray-700 border-gray-200",
+  A2: "bg-blue-100 text-blue-700 border-blue-200",
+  B1: "bg-green-100 text-green-700 border-green-200",
+  B2: "bg-teal-100 text-teal-700 border-teal-200",
+  C1: "bg-purple-100 text-purple-700 border-purple-200",
+  C2: "bg-amber-100 text-amber-700 border-amber-200",
+};
+
 function StudentRow({
   student,
   group,
+  level,
   onPriceChange,
 }: {
   student: Student;
   group: { id: string; name: string } | null;
+  level: StudentLevel;
   onPriceChange: () => void;
 }) {
   const currentPrice = student.lessonPrice != null ? student.lessonPrice / 100 : null;
@@ -538,6 +564,17 @@ function StudentRow({
           </button>
         )}
 
+        {level && (
+          <span
+            className={[
+              "inline-flex items-center rounded border px-2 py-0.5 text-xs font-bold",
+              LEVEL_STYLES[level.level] ?? "bg-gray-100 text-gray-700 border-gray-200",
+            ].join(" ")}
+            title={`Progress test: ${level.score}% on ${new Date(level.completedAt).toLocaleDateString()}`}
+          >
+            {level.level}
+          </span>
+        )}
         {student.paymentCode && (
           <span className="font-mono text-xs text-ink/40 bg-ink/5 rounded px-2 py-0.5">
             {student.paymentCode}
