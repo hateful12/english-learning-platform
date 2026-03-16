@@ -144,6 +144,8 @@ export function ScheduleViewer() {
         .rbc-show-more { color: var(--accent); }
         .rbc-time-gutter .rbc-timeslot-group { border-color: rgba(26,26,46,0.08); }
         .rbc-time-gutter .rbc-label { font-size: 0.72rem; color: rgba(26,26,46,0.4); padding-right: 8px; }
+        .rbc-allday-cell { display: none; }
+        .rbc-time-header-content > .rbc-row.rbc-row-resource { display: none; }
       `}</style>
 
       <div className="card overflow-hidden p-0" style={{ height: "calc(100vh - 230px)", minHeight: 520 }}>
