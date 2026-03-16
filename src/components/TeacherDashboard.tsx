@@ -26,13 +26,13 @@ type Homework = {
 
 type Tab = "homework" | "groups" | "students" | "schedule" | "payments" | "settings";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "homework", label: "Homework" },
-  { id: "schedule", label: "Schedule" },
-  { id: "groups", label: "Groups" },
-  { id: "students", label: "Students" },
-  { id: "payments", label: "Transactions" },
-  { id: "settings", label: "Settings" },
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: "schedule", label: "Schedule", icon: "📅" },
+  { id: "homework", label: "Homework", icon: "📝" },
+  { id: "payments", label: "Payments", icon: "💳" },
+  { id: "students", label: "Students", icon: "👩‍🎓" },
+  { id: "groups", label: "Groups", icon: "👥" },
+  { id: "settings", label: "Settings", icon: "⚙️" },
 ];
 
 type Transaction = {
@@ -55,7 +55,7 @@ type SettingsData = {
 };
 
 export function TeacherDashboard() {
-  const [activeTab, setActiveTab] = useState<Tab>("homework");
+  const [activeTab, setActiveTab] = useState<Tab>("schedule");
   const [students, setStudents] = useState<Student[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [homework, setHomework] = useState<Homework[]>([]);
@@ -185,25 +185,37 @@ export function TeacherDashboard() {
     );
   }
 
+  const pendingHomework = homework.filter((hw) => (hw.responses?.length ?? 0) > 0).length;
+
   return (
     <div className="space-y-6">
       {/* Tab bar */}
-      <div className="border-b border-ink/10 overflow-x-auto">
+      <div className="overflow-x-auto rounded-xl bg-ink/5 p-1.5">
         <nav className="flex gap-1 min-w-max">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? "border-accent text-accent"
-                  : "border-transparent text-ink/50 hover:text-ink/80 hover:border-ink/20"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
+            const badge = tab.id === "homework" && pendingHomework > 0 ? pendingHomework : null;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium whitespace-nowrap transition-all duration-150 ${
+                  isActive
+                    ? "bg-white text-ink shadow-sm border border-ink/10"
+                    : "text-ink/50 hover:text-ink/80 hover:bg-white/50"
+                }`}
+              >
+                <span className="text-base leading-none">{tab.icon}</span>
+                {tab.label}
+                {badge !== null && (
+                  <span className="ml-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-white leading-none">
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
       </div>
 
