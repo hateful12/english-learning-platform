@@ -110,6 +110,19 @@ export async function POST() {
     });
   } catch (err) {
     console.error("POST /api/assessment/start error:", err);
+    const errObj = err as Record<string, unknown>;
+    if (errObj?.status === 429 || errObj?.code === "insufficient_quota") {
+      return NextResponse.json(
+        { error: "The OpenAI account has run out of credits. Please top up the balance at platform.openai.com and try again." },
+        { status: 503 }
+      );
+    }
+    if (errObj?.status === 401) {
+      return NextResponse.json(
+        { error: "Invalid OpenAI API key. Please check the OPENAI_API_KEY in your environment settings." },
+        { status: 503 }
+      );
+    }
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
       { error: "Failed to start assessment", details: process.env.NODE_ENV === "development" ? message : undefined },
