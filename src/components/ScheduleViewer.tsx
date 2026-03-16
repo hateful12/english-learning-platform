@@ -145,6 +145,7 @@ export function ScheduleViewer() {
         .rbc-time-gutter .rbc-timeslot-group { border-color: rgba(26,26,46,0.08); }
         .rbc-time-gutter .rbc-label { font-size: 0.72rem; color: rgba(26,26,46,0.4); padding-right: 8px; }
         .rbc-allday-cell { display: none; }
+        .rbc-event-label { display: none; }
         .rbc-time-header-content > .rbc-row.rbc-row-resource { display: none; }
       `}</style>
 
