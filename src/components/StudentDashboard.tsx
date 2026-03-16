@@ -226,8 +226,8 @@ export function StudentDashboard() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-16">
-        <span className="text-ink/50">Loading…</span>
+      <div className="flex justify-center py-24">
+        <span className="text-ink/40 text-sm tracking-wide">Loading…</span>
       </div>
     );
   }
@@ -236,23 +236,23 @@ export function StudentDashboard() {
   const closedHomework = homework.filter((h) => h.status === "closed" || h.studentClosed);
 
   return (
-    <div className="card overflow-hidden">
+    <div className="overflow-hidden rounded-2xl border border-ink/10 bg-white/80 shadow-md backdrop-blur-sm">
       {/* Tab bar */}
-      <div className="flex border-b border-ink/10 bg-ink/[0.02]">
+      <div className="flex border-b border-ink/10 bg-ink/[0.025]">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
             className={[
-              "flex flex-1 items-center justify-center gap-2 px-4 py-3.5 text-sm font-medium transition-colors",
+              "flex flex-1 items-center justify-center gap-2 px-4 py-4 text-sm font-medium transition-all",
               activeTab === tab.id
-                ? "border-b-2 border-accent text-accent bg-white"
-                : "border-b-2 border-transparent text-ink/50 hover:text-ink/70 hover:bg-ink/[0.03]",
+                ? "border-b-2 border-accent text-accent bg-white/90"
+                : "border-b-2 border-transparent text-ink/50 hover:text-ink/70 hover:bg-white/40",
             ].join(" ")}
           >
             <span className="text-base leading-none">{tab.icon}</span>
-            <span>{tab.label}</span>
+            <span className="hidden sm:inline">{tab.label}</span>
             {tab.id === "homework" && activeHomework.length > 0 && (
               <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-bold text-white leading-none">
                 {activeHomework.length}
@@ -263,7 +263,7 @@ export function StudentDashboard() {
       </div>
 
       {/* Tab panels */}
-      <div className="p-6">
+      <div className="p-6 md:p-8">
         {/* Schedule */}
         {activeTab === "schedule" && (
           <div>

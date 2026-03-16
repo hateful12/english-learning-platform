@@ -15,8 +15,8 @@ export function StudentHeader({ student }: { student: Student }) {
   }
 
   return (
-    <header className="border-b border-ink/10 bg-white">
-      <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-1">
+    <header className="sticky top-0 z-10 border-b border-ink/10 bg-white/70 backdrop-blur-md">
+      <div className="flex items-center justify-between px-6 py-1 md:px-8">
         <Logo />
         <div className="flex items-center gap-4">
           <span className="text-sm text-ink/60">
