@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { isTeacherLoggedIn } from "@/lib/auth";
 
+const VALID_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
+
 export async function GET() {
   const loggedIn = await isTeacherLoggedIn();
   if (!loggedIn) {
@@ -9,7 +11,7 @@ export async function GET() {
   }
   const students = await prisma.student.findMany({
     orderBy: { createdAt: "desc" },
-    select: { id: true, email: true, name: true, paymentCode: true, lessonPrice: true, createdAt: true },
+    select: { id: true, email: true, name: true, paymentCode: true, lessonPrice: true, level: true, createdAt: true },
   });
   return NextResponse.json(students);
 }
@@ -23,18 +25,32 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { id, lessonPrice } = (body as Record<string, unknown>) ?? {};
+  const { id, lessonPrice, level } = (body as Record<string, unknown>) ?? {};
   if (typeof id !== "string") return NextResponse.json({ error: "id required" }, { status: 400 });
 
-  const priceInKopecks =
-    typeof lessonPrice === "number" && lessonPrice > 0
-      ? Math.round(lessonPrice * 100)
-      : null;
+  const updateData: Record<string, unknown> = {};
+
+  if (lessonPrice !== undefined) {
+    updateData.lessonPrice =
+      typeof lessonPrice === "number" && lessonPrice > 0
+        ? Math.round(lessonPrice * 100)
+        : null;
+  }
+
+  if (level !== undefined) {
+    if (level === null || level === "") {
+      updateData.level = null;
+    } else if (typeof level === "string" && VALID_LEVELS.includes(level)) {
+      updateData.level = level;
+    } else {
+      return NextResponse.json({ error: "Invalid level" }, { status: 400 });
+    }
+  }
 
   const updated = await prisma.student.update({
     where: { id },
-    data: { lessonPrice: priceInKopecks },
-    select: { id: true, email: true, name: true, paymentCode: true, lessonPrice: true, createdAt: true },
+    data: updateData,
+    select: { id: true, email: true, name: true, paymentCode: true, lessonPrice: true, level: true, createdAt: true },
   });
 
   return NextResponse.json(updated);

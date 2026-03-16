@@ -152,7 +152,7 @@ function HomeworkSubmit({
   );
 }
 
-type StudentInfo = { id: string; email: string; name: string | null; paymentCode: string } | null;
+type StudentInfo = { id: string; email: string; name: string | null; paymentCode: string; level?: string | null } | null;
 type PublicSettings = { lessonPrice: number | null; monobankCard: string | null } | null;
 
 export function StudentDashboard() {
@@ -298,7 +298,7 @@ export function StudentDashboard() {
         )}
 
         {/* Progress Test */}
-        {activeTab === "progress-test" && <ProgressTestTab />}
+        {activeTab === "progress-test" && <ProgressTestTab assignedLevel={studentInfo?.level ?? null} />}
       </div>
     </div>
   );
@@ -670,30 +670,33 @@ function TestView({
 
 function ResultsView({
   result,
+  assignedLevel,
   history,
   historyOpen,
   onHistoryToggle,
   onRetake,
 }: {
   result: AssessmentResult;
+  assignedLevel: string | null;
   history: AssessmentSummary[];
   historyOpen: boolean;
   onHistoryToggle: () => void;
   onRetake: () => void;
 }) {
   const completedHistory = history.filter((a) => a.status === "completed");
+  const level = assignedLevel ?? result.level;
   return (
     <div className="space-y-5">
       {/* Result card */}
       <div className="rounded-xl border border-ink/10 bg-white p-6 shadow-sm space-y-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-ink">Your Result</h2>
+          <h2 className="text-lg font-semibold text-ink">Progress Test Result</h2>
           <span className="text-xs text-ink/40">{new Date(result.completedAt).toLocaleDateString()}</span>
         </div>
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
           <div className="flex flex-col items-center gap-2">
-            <LevelBadge level={result.level} large />
-            <p className="text-xs font-medium text-ink/50">CEFR Level</p>
+            {level && <LevelBadge level={level} large />}
+            <p className="text-xs font-medium text-ink/50">Your level</p>
           </div>
           <div className="flex-1 space-y-3">
             {/* Score bar */}
@@ -741,7 +744,7 @@ function ResultsView({
   );
 }
 
-function ProgressTestTab() {
+function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | undefined }) {
   const [phase, setPhase] = useState<"idle" | "loading" | "testing" | "evaluating" | "results">("idle");
   const [history, setHistory] = useState<AssessmentSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -850,7 +853,7 @@ function ProgressTestTab() {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4">
         <div className="h-12 w-12 rounded-full border-4 border-accent/20 border-t-accent animate-spin" />
-        <p className="text-sm text-ink/60">Generating your test questions…</p>
+        <p className="text-sm text-ink/60">Generating your {assignedLevel} progress test…</p>
         <p className="text-xs text-ink/40">This may take a few seconds</p>
       </div>
     );
@@ -869,6 +872,7 @@ function ProgressTestTab() {
     return (
       <ResultsView
         result={result}
+        assignedLevel={assignedLevel ?? null}
         history={history}
         historyOpen={historyOpen}
         onHistoryToggle={() => setHistoryOpen((o) => !o)}
@@ -898,24 +902,36 @@ function ProgressTestTab() {
   const hasPending = history.find((a) => a.status === "pending");
   const completedHistory = history.filter((a) => a.status === "completed");
 
+  // No level assigned by teacher yet
+  if (!assignedLevel) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+        <span className="text-4xl">🎓</span>
+        <p className="font-medium text-ink">No level assigned yet</p>
+        <p className="text-sm text-ink/50 max-w-xs">
+          Your teacher needs to set your English level (A1–C2) in the Students tab before you can take the progress test.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {latestCompleted && (
-        <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-5 flex items-center gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Your current level</p>
-            <div className="flex items-center gap-3">
-              <LevelBadge level={latestCompleted.level!} large />
-              <div>
-                <p className="text-sm text-ink/60">Score: {latestCompleted.score}%</p>
-                <p className="text-xs text-ink/40">
-                  Tested on {new Date(latestCompleted.completedAt!).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-          </div>
+      {/* Assigned level banner */}
+      <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-4 flex items-center gap-4">
+        <LevelBadge level={assignedLevel} large />
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink/40">Your level</p>
+          <p className="text-sm text-ink/60">This test is tailored to your {assignedLevel} level</p>
         </div>
-      )}
+        {latestCompleted && (
+          <div className="ml-auto text-right">
+            <p className="text-xs text-ink/40">Last score</p>
+            <p className="text-lg font-bold text-accent">{latestCompleted.score}%</p>
+            <p className="text-xs text-ink/30">{new Date(latestCompleted.completedAt!).toLocaleDateString()}</p>
+          </div>
+        )}
+      </div>
 
       <div className="rounded-xl border border-ink/10 p-6 space-y-4">
         <div>
@@ -923,13 +939,13 @@ function ProgressTestTab() {
             {latestCompleted ? "Retake the Progress Test" : "Start Your Progress Test"}
           </h2>
           <p className="mt-1 text-sm text-ink/60">
-            25 multiple-choice questions covering vocabulary, grammar, and reading comprehension. ChatGPT
-            will evaluate your answers and assign your English level (A1–C2).
+            25 questions focused on your <strong>{assignedLevel}</strong> level — vocabulary, grammar, and reading comprehension.
+            ChatGPT evaluates your answers and gives personalised feedback.
           </p>
           <ul className="mt-3 space-y-1 text-sm text-ink/60">
-            <li>📝 25 questions across all CEFR levels</li>
+            <li>📝 25 questions tailored to {assignedLevel}</li>
             <li>⏱ Takes about 10–15 minutes</li>
-            <li>🤖 AI-powered evaluation by ChatGPT</li>
+            <li>🤖 AI-powered feedback by ChatGPT</li>
           </ul>
         </div>
         {error && (

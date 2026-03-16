@@ -5,26 +5,21 @@ import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const EVALUATE_SYSTEM_PROMPT = `You are an English language assessment expert. 
-Evaluate the student's answers to the CEFR test and determine their English proficiency level.
+function buildEvaluatePrompt(level: string): string {
+  return `You are an English language progress-test expert.
+A student whose teacher-assigned level is ${level} has just completed a progress test.
+The test had 25 questions: some slightly below ${level}, most at ${level}, and a few slightly above.
 
-You will receive a JSON array of answered questions. Each entry has:
-- question: the question text
-- targetLevel: the intended CEFR level of the question
-- correctAnswer: the correct answer
-- studentAnswer: what the student selected (may be null if not answered)
+Evaluate their answers and return:
+1. A score from 0 to 100 based on what percentage they answered correctly
+2. A short, encouraging feedback paragraph (2-3 sentences) that mentions their performance at the ${level} level specifically, highlights what they're doing well, and suggests one concrete area to focus on next
 
-Based on the pattern of correct and incorrect answers, determine:
-1. The student's CEFR level: A1, A2, B1, B2, C1, or C2
-2. A score from 0 to 100 (percentage of correct answers, but also consider which levels were mastered)
-3. A short encouraging feedback paragraph (2-3 sentences) describing their strengths and what to work on next
-
-Return ONLY valid JSON with this exact structure (no markdown, no extra text):
+Return ONLY valid JSON — no markdown, no extra text:
 {
-  "level": "B1",
-  "score": 64,
-  "feedback": "Your feedback text here."
+  "score": 72,
+  "feedback": "Your feedback here."
 }`;
+}
 
 interface AnswerPayload {
   questionId: string;
@@ -74,62 +69,61 @@ export async function POST(
       return NextResponse.json({ error: "answers must be an array" }, { status: 400 });
     }
 
-    // Save student answers to each question
     const answerMap = new Map<string, string>(
       (answers as AnswerPayload[]).map((a) => [a.questionId, a.answer])
     );
 
+    // Save student answers
     await Promise.all(
-      assessment.questions.map((q) => {
-        const studentAnswer = answerMap.get(q.id) ?? null;
-        return prisma.assessmentQuestion.update({
+      assessment.questions.map((q) =>
+        prisma.assessmentQuestion.update({
           where: { id: q.id },
-          data: { studentAnswer },
-        });
-      })
+          data: { studentAnswer: answerMap.get(q.id) ?? null },
+        })
+      )
     );
 
-    // Build evaluation payload for OpenAI
+    // The level is already stored on the assessment (set when the test was created)
+    const studentLevel = assessment.level ?? "B1";
+
+    // Build evaluation input — correct / wrong per question
     const evaluationInput = assessment.questions.map((q) => ({
       question: q.question,
-      targetLevel: "B1", // stored in DB if needed; use placeholder for now
       correctAnswer: q.correctAnswer,
       studentAnswer: answerMap.get(q.id) ?? null,
+      isCorrect: (answerMap.get(q.id) ?? null) === q.correctAnswer,
     }));
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
-        { role: "system", content: EVALUATE_SYSTEM_PROMPT },
+        { role: "system", content: buildEvaluatePrompt(studentLevel) },
         { role: "user", content: JSON.stringify(evaluationInput) },
       ],
       temperature: 0.3,
-      max_tokens: 500,
+      max_tokens: 400,
     });
 
-    const raw = completion.choices[0]?.message?.content ?? "{}";
-    let result: { level: string; score: number; feedback: string };
+    const rawContent = completion.choices[0]?.message?.content ?? "{}";
+    const raw = rawContent.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    let result: { score: number; feedback: string };
     try {
-      result = JSON.parse(raw) as { level: string; score: number; feedback: string };
+      result = JSON.parse(raw) as { score: number; feedback: string };
     } catch {
-      console.error("OpenAI evaluation returned invalid JSON:", raw);
+      console.error("OpenAI evaluation returned invalid JSON:", rawContent);
       return NextResponse.json({ error: "Failed to evaluate answers. Please try again." }, { status: 502 });
     }
 
-    const validLevels = ["A1", "A2", "B1", "B2", "C1", "C2"];
-    if (!validLevels.includes(result.level)) {
-      result.level = "B1";
-    }
     if (typeof result.score !== "number") {
-      result.score = 0;
+      // Fallback: calculate score from correct answers
+      const correct = evaluationInput.filter((q) => q.isCorrect).length;
+      result.score = Math.round((correct / evaluationInput.length) * 100);
     }
 
-    // Update assessment as completed
     const updated = await prisma.assessment.update({
       where: { id: assessmentId },
       data: {
         status: "completed",
-        level: result.level,
         score: Math.min(100, Math.max(0, Math.round(result.score))),
         feedback: result.feedback ?? "",
         completedAt: new Date(),

@@ -6,8 +6,7 @@ import { InviteSection } from "./InviteSection";
 import { GroupEditor, Group } from "./GroupEditor";
 import { ScheduleEditor } from "./ScheduleEditor";
 
-type Student = { id: string; email: string; name: string | null; paymentCode?: string; lessonPrice?: number | null; createdAt?: string };
-type StudentLevel = { level: string; score: number; completedAt: string } | null;
+type Student = { id: string; email: string; name: string | null; paymentCode?: string; lessonPrice?: number | null; level?: string | null; createdAt?: string };
 type HomeworkResponse = {
   id: string;
   response: string;
@@ -63,7 +62,6 @@ export function TeacherDashboard() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [settingsData, setSettingsData] = useState<SettingsData>({ hasMonobankToken: false, monobankCard: "", appUrl: "" });
   const [loading, setLoading] = useState(true);
-  const [studentLevels, setStudentLevels] = useState<Record<string, StudentLevel>>({});
 
   // Settings form state
   const [settingsToken, setSettingsToken] = useState("");
@@ -87,16 +85,6 @@ export function TeacherDashboard() {
     });
   }
 
-  function loadStudentLevels() {
-    fetch("/api/assessment")
-      .then((r) => r.json())
-      .then((data: Record<string, StudentLevel>) => {
-        if (data && typeof data === "object" && !Array.isArray(data)) {
-          setStudentLevels(data);
-        }
-      })
-      .catch(() => {});
-  }
 
   function loadTransactions() {
     fetch("/api/payments")
@@ -118,7 +106,6 @@ export function TeacherDashboard() {
     load();
     loadTransactions();
     loadSettings();
-    loadStudentLevels();
   }, []);
 
   async function togglePaid(lessonId: string, currentlyPaid: boolean) {
@@ -265,8 +252,7 @@ export function TeacherDashboard() {
                       key={s.id}
                       student={s}
                       group={group ?? null}
-                      level={studentLevels[s.id] ?? null}
-                      onPriceChange={load}
+                      onUpdate={load}
                     />
                   );
                 })}
@@ -487,6 +473,8 @@ export function TeacherDashboard() {
   );
 }
 
+const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
+
 const LEVEL_STYLES: Record<string, string> = {
   A1: "bg-gray-100 text-gray-700 border-gray-200",
   A2: "bg-blue-100 text-blue-700 border-blue-200",
@@ -499,29 +487,39 @@ const LEVEL_STYLES: Record<string, string> = {
 function StudentRow({
   student,
   group,
-  level,
-  onPriceChange,
+  onUpdate,
 }: {
   student: Student;
   group: { id: string; name: string } | null;
-  level: StudentLevel;
-  onPriceChange: () => void;
+  onUpdate: () => void;
 }) {
   const currentPrice = student.lessonPrice != null ? student.lessonPrice / 100 : null;
-  const [editing, setEditing] = useState(false);
+  const [editingPrice, setEditingPrice] = useState(false);
   const [priceInput, setPriceInput] = useState(currentPrice != null ? String(currentPrice) : "");
-  const [saving, setSaving] = useState(false);
+  const [savingPrice, setSavingPrice] = useState(false);
+  const [savingLevel, setSavingLevel] = useState(false);
 
   async function savePrice() {
-    setSaving(true);
+    setSavingPrice(true);
     await fetch("/api/students", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: student.id, lessonPrice: priceInput !== "" ? Number(priceInput) : 0 }),
     });
-    setSaving(false);
-    setEditing(false);
-    onPriceChange();
+    setSavingPrice(false);
+    setEditingPrice(false);
+    onUpdate();
+  }
+
+  async function setLevel(level: string | null) {
+    setSavingLevel(true);
+    await fetch("/api/students", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: student.id, level: level ?? "" }),
+    });
+    setSavingLevel(false);
+    onUpdate();
   }
 
   return (
@@ -533,8 +531,36 @@ function StudentRow({
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-2 flex-wrap justify-end">
+
+        {/* CEFR level selector */}
+        <div className="flex items-center gap-1">
+          {student.level && (
+            <span
+              className={[
+                "inline-flex items-center rounded border px-2 py-0.5 text-xs font-bold",
+                LEVEL_STYLES[student.level] ?? "bg-gray-100 text-gray-700 border-gray-200",
+              ].join(" ")}
+            >
+              {student.level}
+            </span>
+          )}
+          <select
+            value={student.level ?? ""}
+            disabled={savingLevel}
+            onChange={(e) => setLevel(e.target.value || null)}
+            className="text-xs text-ink/50 border border-dashed border-ink/20 rounded px-1.5 py-0.5 bg-transparent hover:border-ink/40 transition-colors cursor-pointer disabled:opacity-50"
+            title="Set student level"
+          >
+            <option value="">{student.level ? "clear level" : "+ set level"}</option>
+            {CEFR_LEVELS.map((l) => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+          {savingLevel && <span className="text-xs text-ink/40">…</span>}
+        </div>
+
         {/* Lesson price */}
-        {editing ? (
+        {editingPrice ? (
           <div className="flex items-center gap-1">
             <span className="text-xs text-ink/40">₴</span>
             <input
@@ -544,19 +570,19 @@ function StudentRow({
               autoFocus
               value={priceInput}
               onChange={(e) => setPriceInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") savePrice(); if (e.key === "Escape") setEditing(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") savePrice(); if (e.key === "Escape") setEditingPrice(false); }}
               className="input text-xs py-0.5 w-20"
               placeholder="price"
             />
-            <button type="button" disabled={saving} onClick={savePrice} className="text-xs text-accent hover:underline">
-              {saving ? "…" : "Save"}
+            <button type="button" disabled={savingPrice} onClick={savePrice} className="text-xs text-accent hover:underline">
+              {savingPrice ? "…" : "Save"}
             </button>
-            <button type="button" onClick={() => setEditing(false)} className="text-xs text-ink/40 hover:underline">Cancel</button>
+            <button type="button" onClick={() => setEditingPrice(false)} className="text-xs text-ink/40 hover:underline">Cancel</button>
           </div>
         ) : (
           <button
             type="button"
-            onClick={() => { setPriceInput(currentPrice != null ? String(currentPrice) : ""); setEditing(true); }}
+            onClick={() => { setPriceInput(currentPrice != null ? String(currentPrice) : ""); setEditingPrice(true); }}
             className="text-xs text-ink/50 hover:text-ink/80 border border-dashed border-ink/20 rounded px-2 py-0.5 hover:border-ink/40 transition-colors"
             title="Set lesson price"
           >
@@ -564,17 +590,6 @@ function StudentRow({
           </button>
         )}
 
-        {level && (
-          <span
-            className={[
-              "inline-flex items-center rounded border px-2 py-0.5 text-xs font-bold",
-              LEVEL_STYLES[level.level] ?? "bg-gray-100 text-gray-700 border-gray-200",
-            ].join(" ")}
-            title={`Progress test: ${level.score}% on ${new Date(level.completedAt).toLocaleDateString()}`}
-          >
-            {level.level}
-          </span>
-        )}
         {student.paymentCode && (
           <span className="font-mono text-xs text-ink/40 bg-ink/5 rounded px-2 py-0.5">
             {student.paymentCode}

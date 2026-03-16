@@ -5,29 +5,33 @@ import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const SYSTEM_PROMPT = `You are an English language assessment expert. Generate exactly 25 multiple-choice questions to assess a student's English proficiency level across the full CEFR range (A1 to C2).
+function buildPrompt(level: string): string {
+  // One level below and one above for context, most questions at the target level
+  return `You are an English language progress-test expert. Generate exactly 25 multiple-choice questions to help a ${level} level English student check their progress.
 
-Cover the following areas proportionally:
+Question distribution (IMPORTANT — follow exactly):
+- 5 questions slightly below ${level} (consolidation — the student should mostly get these right)
+- 15 questions squarely at ${level} level
+- 5 questions slightly above ${level} (stretch — to show what's next)
+
+Cover these areas proportionally:
 - Vocabulary (8 questions)
 - Grammar (9 questions)
 - Reading comprehension micro-tasks (4 questions)
 - Phrasal verbs / idioms (4 questions)
 
-Distribute difficulty: ~4 A1/A2, ~5 A2/B1, ~6 B1, ~5 B1/B2, ~5 B2, ~4 C1/C2.
-
 Return ONLY a valid JSON array with exactly 25 objects. No markdown, no extra text. Each object must have:
 {
   "question": "The full question text",
   "options": ["option A text", "option B text", "option C text", "option D text"],
-  "correctAnswer": "the full text of the correct option (must match exactly one of the options)",
-  "targetLevel": "A1" | "A2" | "B1" | "B2" | "C1" | "C2"
+  "correctAnswer": "the full text of the correct option (must match exactly one of the options)"
 }`;
+}
 
 interface RawQuestion {
   question: string;
   options: string[];
   correctAnswer: string;
-  targetLevel: string;
 }
 
 export async function POST() {
@@ -37,16 +41,31 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if student already has a pending (incomplete) assessment
+    // Get student with their assigned level
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      select: { level: true },
+    });
+
+    if (!student?.level) {
+      return NextResponse.json(
+        { error: "Your teacher hasn't assigned your English level yet. Please ask them to set it in the Students tab." },
+        { status: 400 }
+      );
+    }
+
+    const studentLevel = student.level;
+
+    // Resume existing pending assessment for this level
     const pending = await prisma.assessment.findFirst({
       where: { studentId, status: "pending" },
       include: { questions: { orderBy: { order: "asc" } } },
     });
 
     if (pending) {
-      // Resume the existing pending test
       return NextResponse.json({
         assessmentId: pending.id,
+        studentLevel,
         questions: pending.questions.map((q) => ({
           id: q.id,
           order: q.order,
@@ -57,20 +76,21 @@ export async function POST() {
       });
     }
 
-    // Generate questions via OpenAI
+    // Generate questions tailored to the student's level
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages: [{ role: "user", content: SYSTEM_PROMPT }],
+      messages: [{ role: "user", content: buildPrompt(studentLevel) }],
       temperature: 0.7,
       max_tokens: 4000,
     });
 
-    const raw = completion.choices[0]?.message?.content ?? "[]";
+    const rawContent = completion.choices[0]?.message?.content ?? "[]";
+    const raw = rawContent.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
     let parsed: RawQuestion[];
     try {
       parsed = JSON.parse(raw) as RawQuestion[];
     } catch {
-      console.error("OpenAI returned invalid JSON:", raw);
+      console.error("OpenAI returned invalid JSON:", rawContent);
       return NextResponse.json({ error: "Failed to generate questions. Please try again." }, { status: 502 });
     }
 
@@ -78,14 +98,13 @@ export async function POST() {
       return NextResponse.json({ error: "Generated questions are invalid. Please try again." }, { status: 502 });
     }
 
-    // Take up to 25 questions
     const questions = parsed.slice(0, 25);
 
-    // Save assessment + questions to DB
     const assessment = await prisma.assessment.create({
       data: {
         studentId,
         status: "pending",
+        level: studentLevel,
         questions: {
           create: questions.map((q, i) => ({
             order: i + 1,
@@ -100,6 +119,7 @@ export async function POST() {
 
     return NextResponse.json({
       assessmentId: assessment.id,
+      studentLevel,
       questions: assessment.questions.map((q) => ({
         id: q.id,
         order: q.order,
