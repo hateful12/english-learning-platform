@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Calendar, dateFnsLocalizer, View } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay } from "date-fns";
+import { format, parse, startOfWeek, getDay, isSameDay } from "date-fns";
 import { enUS } from "date-fns/locale";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 
@@ -61,6 +61,26 @@ export function ScheduleViewer() {
     return { id: l.id, title: l.title, start, end, resource: l };
   });
 
+  function DayHeader({ date }: { date: Date }) {
+    const today = isSameDay(date, new Date());
+    return (
+      <div className="flex flex-col items-center py-2.5 gap-0.5">
+        <span
+          className="text-2xl font-bold leading-none"
+          style={{ color: today ? "var(--accent)" : "var(--ink)" }}
+        >
+          {format(date, "d")}
+        </span>
+        <span
+          className="text-[11px] font-semibold uppercase tracking-widest"
+          style={{ color: today ? "rgba(233,69,96,0.7)" : "rgba(26,26,46,0.45)" }}
+        >
+          {format(date, "EEE")}
+        </span>
+      </div>
+    );
+  }
+
   function EventComponent({ event }: { event: CalendarEvent }) {
     const l = event.resource;
     return (
@@ -104,7 +124,8 @@ export function ScheduleViewer() {
     <>
       <style>{`
         .rbc-calendar { font-family: inherit; color: var(--ink); }
-        .rbc-header { background: #f8f5f0; border-color: rgba(26,26,46,0.1); padding: 6px 0; font-size: 0.8rem; font-weight: 600; color: var(--ink); }
+        .rbc-header { background: #f8f5f0; border-color: rgba(26,26,46,0.1); padding: 0; }
+        .rbc-header + .rbc-header { border-left: 1px solid rgba(26,26,46,0.1); }
         .rbc-today { background-color: rgba(233,69,96,0.05) !important; }
         .rbc-event { background-color: var(--accent) !important; border: none !important; border-radius: 6px !important; padding: 2px 6px !important; cursor: pointer; }
         .rbc-event.rbc-selected { background-color: #c73050 !important; }
@@ -114,15 +135,18 @@ export function ScheduleViewer() {
         .rbc-time-header-content { border-color: rgba(26,26,46,0.1); }
         .rbc-time-view { border-color: rgba(26,26,46,0.1); border-radius: 12px; overflow: hidden; }
         .rbc-off-range-bg { background: rgba(26,26,46,0.03); }
-        .rbc-toolbar button { color: var(--ink); border-color: rgba(26,26,46,0.2); border-radius: 8px; font-size: 0.875rem; padding: 4px 12px; }
+        .rbc-toolbar { padding: 8px 12px; }
+        .rbc-toolbar button { color: var(--ink); border-color: rgba(26,26,46,0.2); border-radius: 8px; font-size: 0.875rem; padding: 5px 14px; }
         .rbc-toolbar button:hover { background: rgba(26,26,46,0.06); }
         .rbc-toolbar button.rbc-active { background: var(--accent) !important; color: white !important; border-color: var(--accent) !important; }
-        .rbc-toolbar-label { font-weight: 600; font-size: 1rem; }
-        .rbc-current-time-indicator { background-color: var(--accent); }
+        .rbc-toolbar-label { font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }
+        .rbc-current-time-indicator { background-color: var(--accent); height: 2px; }
         .rbc-show-more { color: var(--accent); }
+        .rbc-time-gutter .rbc-timeslot-group { border-color: rgba(26,26,46,0.08); }
+        .rbc-time-gutter .rbc-label { font-size: 0.72rem; color: rgba(26,26,46,0.4); padding-right: 8px; }
       `}</style>
 
-      <div className="card p-1" style={{ height: 520 }}>
+      <div className="card overflow-hidden p-0" style={{ height: "calc(100vh - 230px)", minHeight: 520 }}>
         <Calendar
           localizer={localizer}
           events={events}
@@ -131,7 +155,7 @@ export function ScheduleViewer() {
           date={currentDate}
           onNavigate={setCurrentDate}
           onSelectEvent={(event) => setDetail(event.resource)}
-          components={{ event: EventComponent }}
+          components={{ event: EventComponent, header: DayHeader }}
           step={30}
           timeslots={2}
           scrollToTime={new Date(1970, 1, 1, 8, 0, 0)}
