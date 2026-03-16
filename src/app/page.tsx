@@ -17,23 +17,23 @@ export default async function HomePage() {
   if (!student) {
     return (
       <div className="min-h-screen">
-        <header className="border-b border-ink/10 bg-white/60 backdrop-blur">
-          <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+        <header className="border-b border-white/10 bg-[#0a0f2c]">
+          <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-2">
             <Link href="/" className="flex items-center">
               <Image
                 src="/logo.png"
                 alt="senira.english"
-                width={160}
-                height={60}
-                className="h-12 w-auto object-contain"
+                width={220}
+                height={88}
+                className="h-16 w-auto object-contain"
                 priority
               />
             </Link>
             <div className="flex gap-3">
-              <Link href="/login" className="text-sm text-ink/60 hover:text-ink">
+              <Link href="/login" className="text-sm text-white/70 hover:text-white transition-colors">
                 Log in
               </Link>
-              <Link href="/teacher" className="text-sm text-ink/60 hover:text-ink">
+              <Link href="/teacher" className="text-sm text-white/70 hover:text-white transition-colors">
                 Teacher
               </Link>
             </div>

@@ -16,26 +16,26 @@ export function StudentHeader({ student }: { student: Student }) {
   }
 
   return (
-    <header className="border-b border-ink/10 bg-white/60 backdrop-blur">
-      <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+    <header className="border-b border-white/10 bg-[#0a0f2c]">
+      <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-2">
         <Link href="/" className="flex items-center">
           <Image
             src="/logo.png"
             alt="senira.english"
-            width={160}
-            height={60}
-            className="h-12 w-auto object-contain"
+            width={220}
+            height={88}
+            className="h-16 w-auto object-contain"
             priority
           />
         </Link>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-ink/60">
+          <span className="text-sm text-white/70">
             {student.name || student.email}
           </span>
           <button
             type="button"
             onClick={handleLogout}
-            className="btn-secondary text-sm"
+            className="rounded-md border border-white/30 px-3 py-1.5 text-sm text-white/80 hover:border-white/60 hover:text-white transition-colors"
           >
             Log out
           </button>
