@@ -14,17 +14,9 @@ export default async function HomePage() {
       })
     : null;
 
-  const pageBgStyle = {
-    backgroundImage: "url('/english-bg.png')",
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundAttachment: "fixed",
-    backgroundColor: "#fff",
-  } as const;
-
   if (!student) {
     return (
-      <div className="min-h-screen" style={pageBgStyle}>
+      <div className="min-h-screen">
         <header className="border-b border-ink/10 bg-white/80 backdrop-blur-md">
           <div className="flex items-center justify-between px-6 py-1 md:px-10">
             <Logo />
@@ -66,7 +58,7 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="min-h-screen" style={pageBgStyle}>
+    <div className="min-h-screen">
       <StudentHeader student={student} />
       <main className="py-6 px-[4%] md:px-[7%]">
         <StudentDashboard />
