@@ -133,13 +133,13 @@ export async function POST() {
     const errObj = err as Record<string, unknown>;
     if (errObj?.status === 429 || errObj?.code === "insufficient_quota") {
       return NextResponse.json(
-        { error: "The OpenAI account has run out of credits. Please top up the balance at platform.openai.com and try again." },
+        { error: "Assessment service is temporarily unavailable. Please try again later." },
         { status: 503 }
       );
     }
     if (errObj?.status === 401) {
       return NextResponse.json(
-        { error: "Invalid OpenAI API key. Please check the OPENAI_API_KEY in your environment settings." },
+        { error: "Assessment service is not configured. Please contact your teacher." },
         { status: 503 }
       );
     }

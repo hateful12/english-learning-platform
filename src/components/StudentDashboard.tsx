@@ -152,7 +152,7 @@ function HomeworkSubmit({
   );
 }
 
-type StudentInfo = { id: string; email: string; name: string | null; paymentCode: string; level?: string | null } | null;
+type StudentInfo = { id: string; email: string; name: string | null; paymentCode?: string; level?: string | null } | null;
 type PublicSettings = { lessonPrice: number | null; monobankCard: string | null } | null;
 
 export function StudentDashboard() {
@@ -195,10 +195,11 @@ export function StudentDashboard() {
       fetch("/api/homework").then((r) => safeJson(r, [])),
       fetch("/api/auth/student/session").then((r) => safeJson(r, null)),
       fetch("/api/settings/public").then((r) => safeJson(r, null)),
-    ]).then(([hw, session, settings]) => {
+      fetch("/api/auth/student/payment-code").then((r) => safeJson(r, null)),
+    ]).then(([hw, session, settings, paymentCodeData]) => {
       setHomework(Array.isArray(hw) ? hw : []);
-      if (session?.loggedIn && session.student?.paymentCode) {
-        setStudentInfo(session.student);
+      if (session?.loggedIn && session.student) {
+        setStudentInfo({ ...session.student, paymentCode: paymentCodeData?.paymentCode });
       }
       setPublicSettings(settings);
       setLoading(false);
@@ -1076,7 +1077,7 @@ function PaymentsTab({
           </div>
           <button
             type="button"
-            onClick={() => onCopy(studentInfo!.paymentCode)}
+            onClick={() => onCopy(studentInfo!.paymentCode!)}
             className="shrink-0 rounded-lg border border-accent/30 bg-white px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
           >
             {copiedCode ? "Copied!" : "Copy"}

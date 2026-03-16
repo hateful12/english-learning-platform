@@ -7,7 +7,7 @@ import { randomBytes } from "crypto";
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "homework");
 
 const ALLOWED_TYPES = {
-  image: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"],
+  image: ["image/jpeg", "image/png", "image/gif", "image/webp"],
   audio: ["audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg", "audio/webm", "audio/mp4", "audio/x-m4a"],
   archive: [
     "application/zip",
@@ -21,13 +21,12 @@ const ALLOWED_TYPES = {
 
 function getAllowedExtensions(): Set<string> {
   const exts = new Set<string>();
-  // map common extensions for validation
-  ["jpg", "jpeg", "png", "gif", "webp", "svg", "mp3", "wav", "ogg", "webm", "m4a", "zip", "rar", "7z", "gz"].forEach((e) => exts.add(e.toLowerCase()));
+  ["jpg", "jpeg", "png", "gif", "webp", "mp3", "wav", "ogg", "webm", "m4a", "zip", "rar", "7z", "gz"].forEach((e) => exts.add(e.toLowerCase()));
   return exts;
 }
 
 const EXT_TO_CATEGORY: Record<string, "image" | "audio" | "archive"> = {
-  jpg: "image", jpeg: "image", png: "image", gif: "image", webp: "image", svg: "image",
+  jpg: "image", jpeg: "image", png: "image", gif: "image", webp: "image",
   mp3: "audio", wav: "audio", ogg: "audio", webm: "audio", m4a: "audio",
   zip: "archive", rar: "archive", "7z": "archive", gz: "archive",
 };

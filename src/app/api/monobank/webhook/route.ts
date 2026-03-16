@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createVerify } from "crypto";
 import { prisma } from "@/lib/db";
 
 type StatementItem = {
@@ -24,17 +25,45 @@ type WebhookBody = {
   };
 };
 
+/**
+ * Verify the Monobank X-Sign header using the public key from environment.
+ * https://api.monobank.ua/docs/corporate.html#tag/Povydomlennya-pro-vxidni-platezhi/paths/~1personal~1webhook/post
+ */
+async function verifyMonobankSignature(request: NextRequest, rawBody: string): Promise<boolean> {
+  const publicKeyPem = process.env.MONOBANK_WEBHOOK_PUBLIC_KEY;
+  if (!publicKeyPem) {
+    console.warn("[monobank webhook] MONOBANK_WEBHOOK_PUBLIC_KEY is not set — skipping signature check");
+    return false;
+  }
+  const signature = request.headers.get("X-Sign");
+  if (!signature) return false;
+  try {
+    const verifier = createVerify("SHA256");
+    verifier.update(rawBody);
+    return verifier.verify(publicKeyPem, signature, "base64");
+  } catch {
+    return false;
+  }
+}
+
 // Monobank sends GET to validate the webhook URL
 export async function GET() {
   return new NextResponse("ok", { status: 200 });
 }
 
 export async function POST(request: NextRequest) {
+  let rawBody: string;
   let body: WebhookBody;
   try {
-    body = await request.json();
+    rawBody = await request.text();
+    body = JSON.parse(rawBody) as WebhookBody;
   } catch {
     return new NextResponse("bad request", { status: 400 });
+  }
+
+  const isValid = await verifyMonobankSignature(request, rawBody);
+  if (!isValid) {
+    return new NextResponse("forbidden", { status: 403 });
   }
 
   if (body.type !== "StatementItem") {
@@ -63,17 +92,11 @@ export async function POST(request: NextRequest) {
   const matched = students.find((s) => searchText.includes(s.paymentCode.toUpperCase()));
 
   if (!matched) {
-    // Store as unmatched — teacher can assign manually
-    await prisma.payment.create({
-      data: {
-        studentId: students[0]?.id ?? "",
-        monoId: item.id,
-        amount: item.amount,
-        lessonsCount: 0,
-        comment: [item.comment, item.description].filter(Boolean).join(" | ") || null,
-        receivedAt: new Date(item.time * 1000),
-      },
-    });
+    // No student code found — log and skip to avoid assigning payment to the wrong student.
+    // The teacher can reconcile unmatched payments manually via bank statements.
+    console.warn(
+      `[monobank webhook] unmatched payment monoId=${item.id} amount=${item.amount} comment="${item.comment ?? ""}" description="${item.description ?? ""}"`
+    );
     return new NextResponse("ok", { status: 200 });
   }
 

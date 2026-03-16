@@ -26,13 +26,23 @@ export async function POST(
 
   const homework = await prisma.homework.findUnique({
     where: { id: homeworkId },
-    select: { id: true, studentId: true },
+    select: { id: true, studentId: true, groupId: true },
   });
   if (!homework) {
     return NextResponse.json({ error: "Homework not found" }, { status: 404 });
   }
+  // Individual homework: must be assigned to this student
   if (homework.studentId != null && homework.studentId !== studentId) {
     return NextResponse.json({ error: "This homework is not assigned to you" }, { status: 403 });
+  }
+  // Group homework: student must belong to the group
+  if (homework.groupId != null && homework.studentId == null) {
+    const membership = await prisma.studentGroup.findUnique({
+      where: { studentId_groupId: { studentId, groupId: homework.groupId } },
+    });
+    if (!membership) {
+      return NextResponse.json({ error: "This homework is not assigned to you" }, { status: 403 });
+    }
   }
 
   const updated = await prisma.homeworkResponse.upsert({

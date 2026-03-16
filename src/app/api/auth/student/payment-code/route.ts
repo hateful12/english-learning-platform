@@ -5,14 +5,14 @@ import { getStudentId } from "@/lib/auth";
 export async function GET() {
   const studentId = await getStudentId();
   if (!studentId) {
-    return NextResponse.json({ loggedIn: false, student: null });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const student = await prisma.student.findUnique({
     where: { id: studentId },
-    select: { id: true, email: true, name: true, level: true },
+    select: { paymentCode: true },
   });
   if (!student) {
-    return NextResponse.json({ loggedIn: false, student: null });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json({ loggedIn: true, student });
+  return NextResponse.json({ paymentCode: student.paymentCode });
 }

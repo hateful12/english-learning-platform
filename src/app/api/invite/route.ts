@@ -37,7 +37,7 @@ export async function POST() {
   const invite = await prisma.invite.create({
     data: { token },
   });
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const link = `${baseUrl}/join?token=${invite.token}`;
   return NextResponse.json({ invite: { id: invite.id, token: invite.token, usedAt: invite.usedAt, createdAt: invite.createdAt }, link });
 }
