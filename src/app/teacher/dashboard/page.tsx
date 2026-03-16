@@ -10,7 +10,10 @@ export default async function TeacherDashboardPage() {
     redirect("/teacher");
   }
   return (
-    <div className="min-h-screen">
+    <div
+      className="min-h-screen"
+      style={{ backgroundImage: "url('/english-bg.png')", backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed", backgroundColor: "#fff" }}
+    >
       <header className="sticky top-0 z-10 border-b border-ink/10 bg-white/80 backdrop-blur-md">
         <div className="flex items-center justify-between px-6 py-3 md:px-8">
           <h1 className="font-serif text-xl font-semibold text-ink">
