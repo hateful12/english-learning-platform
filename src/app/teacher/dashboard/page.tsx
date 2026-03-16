@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { isTeacherLoggedIn } from "@/lib/auth";
 import { TeacherDashboard } from "@/components/TeacherDashboard";
 import { LogoutButton } from "@/components/LogoutButton";
+import { Logo } from "@/components/Logo";
 import Link from "next/link";
 
 export default async function TeacherDashboardPage() {
@@ -13,9 +14,7 @@ export default async function TeacherDashboardPage() {
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 border-b border-ink/10 bg-white/80 backdrop-blur-md">
         <div className="flex items-center justify-between px-6 py-3 md:px-8">
-          <h1 className="font-serif text-xl font-semibold text-ink">
-            Teacher dashboard
-          </h1>
+          <Logo />
           <div className="flex items-center gap-4">
             <Link href="/" className="text-sm text-ink/60 hover:text-ink transition-colors">
               View as student
