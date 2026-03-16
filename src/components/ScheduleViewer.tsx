@@ -158,6 +158,8 @@ export function ScheduleViewer() {
           components={{ event: EventComponent, header: DayHeader }}
           step={30}
           timeslots={2}
+          min={new Date(1970, 1, 1, 7, 0, 0)}
+          max={new Date(1970, 1, 1, 22, 0, 0)}
           scrollToTime={new Date(1970, 1, 1, 8, 0, 0)}
         />
       </div>
