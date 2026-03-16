@@ -25,7 +25,7 @@ export default async function HomePage() {
                 alt="senira.english"
                 width={300}
                 height={120}
-                className="h-24 w-auto object-contain [mix-blend-mode:multiply]"
+                className="h-24 w-auto object-contain"
                 priority
               />
             </Link>
