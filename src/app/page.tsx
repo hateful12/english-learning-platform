@@ -59,6 +59,42 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen">
+      {/* Red phone box in the left 7% free zone */}
+      <div className="hidden md:flex pointer-events-none fixed left-0 top-0 bottom-0 w-[7%] items-center justify-center z-0 overflow-hidden" aria-hidden="true">
+        <svg viewBox="0 0 70 160" className="w-[75%] max-w-[85px] opacity-85" fill="none" xmlns="http://www.w3.org/2000/svg">
+          {/* Base */}
+          <rect x="6" y="148" width="58" height="12" rx="2" fill="#cc0000"/>
+          {/* Body */}
+          <rect x="10" y="38" width="50" height="112" rx="2" fill="#cc0000"/>
+          {/* Door frame */}
+          <rect x="18" y="70" width="34" height="78" rx="2" fill="#a00000"/>
+          {/* Door panel top arc */}
+          <path d="M18 80 Q35 65 52 80" stroke="#cc0000" strokeWidth="2" fill="none"/>
+          {/* Door glass panels */}
+          <rect x="21" y="82" width="13" height="28" rx="1" fill="#bde0f5" opacity="0.7"/>
+          <rect x="36" y="82" width="13" height="28" rx="1" fill="#bde0f5" opacity="0.7"/>
+          <rect x="21" y="114" width="13" height="28" rx="1" fill="#bde0f5" opacity="0.7"/>
+          <rect x="36" y="114" width="13" height="28" rx="1" fill="#bde0f5" opacity="0.7"/>
+          {/* Door handle */}
+          <rect x="33" y="108" width="4" height="8" rx="2" fill="#ffcc00"/>
+          {/* Crown / top section */}
+          <rect x="8" y="26" width="54" height="14" rx="2" fill="#cc0000"/>
+          {/* Crown windows */}
+          <rect x="13" y="42" width="14" height="22" rx="1" fill="#bde0f5" opacity="0.6"/>
+          <rect x="43" y="42" width="14" height="22" rx="1" fill="#bde0f5" opacity="0.6"/>
+          <rect x="29" y="42" width="12" height="22" rx="1" fill="#bde0f5" opacity="0.6"/>
+          {/* Crown top dome */}
+          <rect x="14" y="14" width="42" height="14" rx="3" fill="#cc0000"/>
+          <ellipse cx="35" cy="14" rx="21" ry="5" fill="#dd1111"/>
+          {/* Finial */}
+          <rect x="31" y="4" width="8" height="12" rx="2" fill="#cc0000"/>
+          <ellipse cx="35" cy="4" rx="5" ry="4" fill="#cc0000"/>
+          <circle cx="35" cy="2" r="2.5" fill="#ffcc00"/>
+          {/* TELEPHONE text hint — small lines */}
+          <rect x="16" y="64" width="38" height="3" rx="1" fill="#ffcc00" opacity="0.9"/>
+        </svg>
+      </div>
+
       {/* Big Ben in the right 7% free zone */}
       <div className="hidden md:flex pointer-events-none fixed right-0 top-0 bottom-0 w-[7%] items-end justify-center pb-4 z-0 overflow-hidden" aria-hidden="true">
         <svg viewBox="0 0 80 260" className="w-[80%] max-w-[90px] opacity-80" fill="none" xmlns="http://www.w3.org/2000/svg">
