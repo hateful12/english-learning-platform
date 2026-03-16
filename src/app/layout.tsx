@@ -15,8 +15,8 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "English with Teacher — Homework & Lessons",
-  description: "Your platform for homework and payment info.",
+  title: "senira.english — Learn English with Senira",
+  description: "Your platform for homework, lessons, and payment info.",
 };
 
 export default function RootLayout({

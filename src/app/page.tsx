@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { getStudentId } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -17,10 +18,17 @@ export default async function HomePage() {
     return (
       <div className="min-h-screen">
         <header className="border-b border-ink/10 bg-white/60 backdrop-blur">
-          <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4">
-            <h1 className="font-serif text-2xl font-semibold text-ink">
-              English with Teacher
-            </h1>
+          <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+            <Link href="/" className="flex items-center">
+              <Image
+                src="/logo.png"
+                alt="senira.english"
+                width={160}
+                height={60}
+                className="h-12 w-auto object-contain"
+                priority
+              />
+            </Link>
             <div className="flex gap-3">
               <Link href="/login" className="text-sm text-ink/60 hover:text-ink">
                 Log in
@@ -60,9 +68,6 @@ export default async function HomePage() {
     <div className="min-h-screen">
       <StudentHeader student={student} />
       <main className="mx-auto max-w-4xl px-4 py-8">
-        <p className="mb-8 text-ink/70">
-          Your homework and payment info.
-        </p>
         <StudentDashboard />
       </main>
     </div>
