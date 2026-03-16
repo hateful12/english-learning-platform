@@ -127,6 +127,14 @@ model HomeworkStudentClose {
   @@id([homeworkId, studentId])
 }
 
+// Tracks student hiding an archived homework item from their own view
+model HomeworkStudentHide {
+  homeworkId String
+  studentId  String
+  hiddenAt   DateTime @default(now())
+  @@id([homeworkId, studentId])
+}
+
 model Payment {
   id                  String               @id @default(cuid())
   studentId           String

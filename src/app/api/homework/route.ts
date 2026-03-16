@@ -61,6 +61,8 @@ export async function GET() {
     let closedForStudentsMap = new Map<string, string[]>();
     // Student: set of homeworkIds individually closed for this student
     let studentClosedSet = new Set<string>();
+    // Student: set of homeworkIds hidden by this student (deleted from archive)
+    let studentHiddenSet = new Set<string>();
 
     if (idList.length > 0) {
       const placeholders = idList.map(() => "?").join(", ");
@@ -104,6 +106,16 @@ export async function GET() {
         studentClosedSet = new Set(
           closeRows.map((r) => (r.homeworkId ?? r.homeworkid) as string).filter(Boolean)
         );
+
+        // Fetch which of these homeworks the student has hidden from their archive
+        const hideRows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+          `SELECT homeworkId AS homeworkId FROM "HomeworkStudentHide" WHERE studentId = ? AND homeworkId IN (${placeholders})`,
+          studentId,
+          ...idList
+        );
+        studentHiddenSet = new Set(
+          hideRows.map((r) => (r.homeworkId ?? r.homeworkid) as string).filter(Boolean)
+        );
       }
     }
 
@@ -119,7 +131,11 @@ export async function GET() {
       }>;
     };
 
-    const serialized = (items as Row[]).map((item) => {
+    const visibleItems = teacher
+      ? (items as Row[])
+      : (items as Row[]).filter((item) => !studentHiddenSet.has(item.id));
+
+    const serialized = visibleItems.map((item) => {
       const { responses, ...rest } = item;
       const gInfo = groupInfoMap.get(item.id);
       // Prefer Prisma's own groupId (reliable once client is regenerated).

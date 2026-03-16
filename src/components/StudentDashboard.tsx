@@ -205,6 +205,11 @@ export function StudentDashboard() {
     });
   }, []);
 
+  async function deleteArchiveItem(homeworkId: string) {
+    await fetch(`/api/homework/${homeworkId}/student-hide`, { method: "POST" });
+    await loadHomework();
+  }
+
   async function submitResponse(homeworkId: string, response: string) {
     setSubmittingId(homeworkId);
     try {
@@ -282,6 +287,7 @@ export function StudentDashboard() {
             onArchiveToggle={() => setArchiveOpen((o) => !o)}
             onArchiveMonthChange={setArchiveMonth}
             onSubmit={submitResponse}
+            onDelete={deleteArchiveItem}
           />
         )}
 
@@ -309,21 +315,50 @@ function HomeworkItem({
   readOnly,
   submittingId,
   onSubmit,
+  onDelete,
 }: {
   item: Homework;
   readOnly?: boolean;
   submittingId: string | null;
   onSubmit: (id: string, response: string) => Promise<void>;
+  onDelete?: (id: string) => Promise<void>;
 }) {
+  const [deleting, setDeleting] = useState(false);
   const attachments = parseAttachments(item);
   const myResponse = item.responses?.[0];
+
+  async function handleDelete() {
+    if (!onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete(item.id);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <li className="border-b border-ink/5 pb-5 last:border-0 last:pb-0">
       <div className="flex items-start justify-between gap-2">
         <h3 className="font-medium text-ink">{item.title}</h3>
-        <span className="shrink-0 text-xs text-ink/40">
-          {new Date(item.createdAt).toLocaleDateString()}
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-ink/40">
+            {new Date(item.createdAt).toLocaleDateString()}
+          </span>
+          {readOnly && onDelete && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              title="Remove from archive"
+              className="rounded p-1 text-ink/30 hover:text-accent hover:bg-accent/10 transition-colors disabled:opacity-40"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
       {item.description && (
         <p className="mt-1 whitespace-pre-wrap text-sm text-ink/70">{item.description}</p>
@@ -387,6 +422,7 @@ function HomeworkTab({
   onArchiveToggle,
   onArchiveMonthChange,
   onSubmit,
+  onDelete,
 }: {
   active: Homework[];
   closed: Homework[];
@@ -396,6 +432,7 @@ function HomeworkTab({
   onArchiveToggle: () => void;
   onArchiveMonthChange: (m: string) => void;
   onSubmit: (id: string, response: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
   const months = Array.from(
     new Set(closed.map((i) => (i.updatedAt ? i.updatedAt.slice(0, 7) : "")))
@@ -472,7 +509,7 @@ function HomeworkTab({
               ) : (
                 <ul className="space-y-4">
                   {filteredClosed.map((item) => (
-                    <HomeworkItem key={item.id} item={item} readOnly submittingId={null} onSubmit={onSubmit} />
+                    <HomeworkItem key={item.id} item={item} readOnly submittingId={null} onSubmit={onSubmit} onDelete={onDelete} />
                   ))}
                 </ul>
               )}
