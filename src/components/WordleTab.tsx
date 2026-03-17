@@ -113,7 +113,7 @@ export function WordleTab({ studentId }: { studentId: string | null }) {
   const [instructionsOpen, setInstructionsOpen] = useState(true);
 
   useEffect(() => {
-    fetch("/api/wordle/leaderboard")
+    fetch("/api/wordle/leaderboard", { credentials: "include" })
       .then((r) => r.json())
       .then((data) => setLeaderboard(Array.isArray(data) ? data : []))
       .catch(() => setLeaderboard([]));
@@ -122,12 +122,16 @@ export function WordleTab({ studentId }: { studentId: string | null }) {
   const myStats = studentId ? leaderboard.find((e) => e.studentId === studentId) ?? null : null;
 
   async function handleGameEnd(date: string, result: "won" | "lost", tries: number) {
-    await fetch("/api/wordle", {
+    const postRes = await fetch("/api/wordle", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date, result, tries }),
+      credentials: "include",
     });
-    const res = await fetch("/api/wordle/leaderboard");
+    if (!postRes.ok) {
+      console.warn("Wordle score save failed:", postRes.status, await postRes.text());
+    }
+    const res = await fetch("/api/wordle/leaderboard", { credentials: "include" });
     const data = await res.json();
     setLeaderboard(Array.isArray(data) ? data : []);
   }
