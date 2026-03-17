@@ -82,7 +82,7 @@ export async function GET() {
       `;
 
       // Fetch all group members for groups that have lessons
-      const groupIds = [...new Set(rows.filter((r) => r.groupId).map((r) => r.groupId as string))];
+      const groupIds = Array.from(new Set(rows.filter((r) => r.groupId).map((r) => r.groupId as string)));
       type MemberRow = { groupId: string; studentId: string; studentName: string | null; studentEmail: string };
       let allGroupMembers: MemberRow[] = [];
       if (groupIds.length > 0) {
