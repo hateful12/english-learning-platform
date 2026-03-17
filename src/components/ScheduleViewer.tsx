@@ -84,9 +84,9 @@ export function ScheduleViewer() {
   function EventComponent({ event }: { event: CalendarEvent }) {
     const l = event.resource;
     return (
-      <div className="flex flex-col h-full overflow-hidden px-0.5">
-        <span className="font-semibold text-xs leading-tight truncate">{l.title}</span>
-        <div className="flex items-center gap-1 mt-auto">
+      <div className="flex flex-col h-full min-w-0 overflow-hidden gap-0.5">
+        <span className="font-semibold text-xs leading-tight truncate shrink-0">{l.title}</span>
+        <div className="flex items-center gap-1 mt-auto shrink-0">
           {l.zoomUrl && (
             <span className="text-[10px] opacity-80">🔗</span>
           )}
@@ -127,7 +127,8 @@ export function ScheduleViewer() {
         .rbc-header { background: #f8f5f0; border-color: rgba(26,26,46,0.1); padding: 0; }
         .rbc-header + .rbc-header { border-left: 1px solid rgba(26,26,46,0.1); }
         .rbc-today { background-color: rgba(233,69,96,0.05) !important; }
-        .rbc-event { background-color: var(--accent) !important; border: none !important; border-radius: 6px !important; padding: 2px 6px !important; cursor: pointer; }
+        .rbc-event { background-color: var(--accent) !important; border: none !important; border-radius: 6px !important; padding: 6px 10px !important; cursor: pointer; min-width: 0; }
+        .rbc-event .rbc-event-content { min-width: 0; overflow: hidden; }
         .rbc-event.rbc-selected { background-color: #c73050 !important; }
         .rbc-time-slot { border-color: rgba(26,26,46,0.05); }
         .rbc-timeslot-group { border-color: rgba(26,26,46,0.1); }

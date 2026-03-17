@@ -279,10 +279,10 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
   function EventComponent({ event }: { event: CalendarEvent }) {
     const l = event.resource;
     return (
-      <div className="flex flex-col h-full overflow-hidden px-0.5">
-        <span className="font-semibold text-xs leading-tight truncate">{l.title}</span>
-        <span className="text-[10px] opacity-80 truncate">{assigneeLabel(l)}</span>
-        <div className="flex items-center gap-1 mt-auto">
+      <div className="flex flex-col h-full min-w-0 overflow-hidden gap-0.5">
+        <span className="font-semibold text-xs leading-tight truncate shrink-0">{l.title}</span>
+        <span className="text-[10px] opacity-80 truncate shrink-0">{assigneeLabel(l)}</span>
+        <div className="flex items-center gap-1 mt-auto shrink-0">
           {l.zoomUrl && <span className="text-[10px] opacity-70">🔗</span>}
           {l.studentId && (
             l.isPaid
@@ -315,7 +315,8 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
         .rbc-calendar { font-family: inherit; color: var(--ink); }
         .rbc-header { background: #f8f5f0; border-color: rgba(26,26,46,0.1); padding: 6px 0; font-size: 0.8rem; font-weight: 600; color: var(--ink); }
         .rbc-today { background-color: rgba(233,69,96,0.05) !important; }
-        .rbc-event { background-color: var(--accent) !important; border: none !important; border-radius: 6px !important; padding: 2px 6px !important; }
+        .rbc-event { background-color: var(--accent) !important; border: none !important; border-radius: 6px !important; padding: 6px 10px !important; min-width: 0; }
+        .rbc-event .rbc-event-content { min-width: 0; overflow: hidden; }
         .rbc-event.rbc-selected { background-color: #c73050 !important; }
         .rbc-slot-selection { background: rgba(233,69,96,0.15) !important; }
         .rbc-time-slot { border-color: rgba(26,26,46,0.05); }
@@ -330,6 +331,7 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
         .rbc-toolbar-label { font-weight: 600; font-size: 1rem; }
         .rbc-current-time-indicator { background-color: var(--accent); }
         .rbc-show-more { color: var(--accent); }
+        .rbc-event-label { display: none; }
       `}</style>
 
       <div className="p-4">
