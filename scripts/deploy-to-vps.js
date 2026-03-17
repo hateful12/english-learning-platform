@@ -54,7 +54,7 @@ async function main() {
     await run(conn, "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs", "3. Install Node.js 20");
     await run(conn, "npm install -g pm2", "4. Install PM2");
 
-    await run(conn, "rm -rf /var/www/english-app && mkdir -p /var/www && git clone -b feature/progress-test-tab " + REPO + " /var/www/english-app", "5. Clone repo");
+    await run(conn, "rm -rf /var/www/english-app && mkdir -p /var/www && git clone -b feature/wordle-game " + REPO + " /var/www/english-app", "5. Clone repo");
 
     await run(conn, "cd /var/www/english-app && npm ci", "6. Install deps (incl. devDeps for build)");
 
