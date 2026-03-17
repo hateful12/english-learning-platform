@@ -12,8 +12,16 @@ export default async function TeacherDashboardPage() {
   }
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-ink/10 bg-white/80 backdrop-blur-md">
-        <div className="flex items-center justify-between px-6 py-3 md:px-8">
+      <header
+        className="sticky top-0 z-10 border-b border-ink/10 overflow-hidden"
+        style={{
+          backgroundImage: "linear-gradient(to bottom, rgba(255,255,255,0.35) 0%, transparent 70%), url(/london-skyline-bg.png)",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+        }}
+      >
+        <div className="flex items-center justify-between px-6 py-4 md:px-8 relative z-10 min-h-[130px]">
           <div className="flex items-center gap-3">
             <Logo />
             <span className="hidden sm:inline-flex items-center rounded-full border border-accent/30 bg-accent/8 px-2.5 py-0.5 text-xs font-semibold text-accent tracking-wide uppercase">
