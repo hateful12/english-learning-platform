@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ScheduleViewer } from "./ScheduleViewer";
-import { WordleGame } from "./WordleGame";
+import { WordleTab } from "./WordleTab";
 
 type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
 type HomeworkResponse = {
@@ -311,9 +311,7 @@ export function StudentDashboard() {
 
         {/* Games */}
         {activeTab === "games" && (
-          <div className="card p-6">
-            <WordleGame />
-          </div>
+          <WordleTab studentId={studentInfo?.id ?? null} />
         )}
       </div>
     </div>

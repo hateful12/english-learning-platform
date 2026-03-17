@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getDailyWord, WORDLE_WORDS } from "@/lib/wordle-words";
 
 const ROWS = 6;
@@ -71,7 +71,11 @@ function saveState(state: StoredState) {
   }
 }
 
-export function WordleGame() {
+type WordleGameProps = {
+  onGameEnd?: (date: string, result: "won" | "lost", tries: number) => void;
+};
+
+export function WordleGame({ onGameEnd }: WordleGameProps) {
   const [targetDate] = useState(() => {
     const d = new Date();
     return d.toISOString().slice(0, 10);
@@ -94,6 +98,21 @@ export function WordleGame() {
     if (guesses.length === 0 && status === "playing") return;
     saveState({ date: targetDate, guesses, status });
   }, [targetDate, guesses, status]);
+
+  const submittedRef = useRef<string | null>(null);
+  useEffect(() => {
+    submittedRef.current = null;
+  }, [targetDate]);
+  useEffect(() => {
+    if (!onGameEnd || submittedRef.current === targetDate) return;
+    if (status === "won" && guesses.length > 0) {
+      submittedRef.current = targetDate;
+      onGameEnd(targetDate, "won", guesses.length);
+    } else if (status === "lost" && guesses.length >= ROWS) {
+      submittedRef.current = targetDate;
+      onGameEnd(targetDate, "lost", 7);
+    }
+  }, [status, targetDate, guesses.length, onGameEnd]);
 
   const submitGuess = useCallback(() => {
     const word = currentGuess.toLowerCase().trim();
