@@ -8,6 +8,7 @@ export type HomeworkAttachment = { url: string; name: string; type: "image" | "a
 type ResponseItem = {
   id: string;
   response: string;
+  studentResponseAttachments?: string;
   submittedAt: string;
   teacherFeedback?: string | null;
   teacherFeedbackAttachments?: string;
@@ -16,6 +17,7 @@ type ResponseItem = {
 };
 type Item = {
   id: string;
+  emoji?: string;
   title: string;
   description: string;
   status?: string;
@@ -334,10 +336,12 @@ export function HomeworkEditor({
   }
 
   const [title, setTitle] = useState("");
+  const [emoji, setEmoji] = useState("");
   const [description, setDescription] = useState("");
   const [assignment, setAssignment] = useState<string>("");
   const [attachments, setAttachments] = useState<HomeworkAttachment[]>([]);
   const [editing, setEditing] = useState<Item | null>(null);
+  const [editingEmoji, setEditingEmoji] = useState("");
   const [editingAttachments, setEditingAttachments] = useState<HomeworkAttachment[]>([]);
   const [editingAssignment, setEditingAssignment] = useState<string>("");
   const [uploading, setUploading] = useState(false);
@@ -385,6 +389,7 @@ export function HomeworkEditor({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        emoji: emoji.trim(),
         title: title.trim(),
         description: description.trim(),
         studentId,
@@ -393,6 +398,7 @@ export function HomeworkEditor({
       }),
     });
     setTitle("");
+    setEmoji("");
     setDescription("");
     setAssignment("");
     setAttachments([]);
@@ -423,6 +429,7 @@ export function HomeworkEditor({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        emoji: editingEmoji.trim(),
         title: editing.title,
         description: editing.description,
         studentId,
@@ -431,6 +438,7 @@ export function HomeworkEditor({
       }),
     });
     setEditing(null);
+    setEditingEmoji("");
     setEditingAttachments([]);
     setEditingAssignment("");
     onUpdate();
@@ -489,6 +497,15 @@ export function HomeworkEditor({
           <div className="flex flex-wrap gap-2">
             <input
               type="text"
+              value={emoji}
+              onChange={(e) => setEmoji(e.target.value)}
+              placeholder="😊"
+              className="input w-12 text-center"
+              maxLength={4}
+              title="Emoji (optional)"
+            />
+            <input
+              type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Homework title"
@@ -542,11 +559,21 @@ export function HomeworkEditor({
           <li key={item.id} className="flex flex-col gap-2 rounded-lg border border-ink/10 bg-white p-3">
             {editing?.id === item.id ? (
               <form onSubmit={handleUpdate} className="space-y-2">
-                <input
-                  value={editing.title}
-                  onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-                  className="input"
-                />
+                <div className="flex gap-2">
+                  <input
+                    value={editingEmoji}
+                    onChange={(e) => setEditingEmoji(e.target.value)}
+                    placeholder="😊"
+                    className="input w-12 text-center"
+                    maxLength={4}
+                    title="Emoji"
+                  />
+                  <input
+                    value={editing.title}
+                    onChange={(e) => setEditing({ ...editing, title: e.target.value })}
+                    className="input flex-1"
+                  />
+                </div>
                 <textarea
                   value={editing.description}
                   onChange={(e) => setEditing({ ...editing, description: e.target.value })}
@@ -584,7 +611,7 @@ export function HomeworkEditor({
                 <AssignmentSelect value={editingAssignment} onChange={setEditingAssignment} />
                 <div className="flex gap-2">
                   <button type="submit" className="btn-primary">Save</button>
-                  <button type="button" onClick={() => { setEditing(null); setEditingAttachments([]); setEditingAssignment(""); }} className="btn-secondary">Cancel</button>
+                  <button type="button" onClick={() => { setEditing(null); setEditingEmoji(""); setEditingAttachments([]); setEditingAssignment(""); }} className="btn-secondary">Cancel</button>
                 </div>
               </form>
             ) : (
@@ -592,6 +619,7 @@ export function HomeworkEditor({
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
+                      {item.emoji && <span>{item.emoji}</span>}
                       <h3 className="font-medium text-ink">{item.title}</h3>
                       <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                         item.groupId
@@ -663,6 +691,27 @@ export function HomeworkEditor({
                                   {response ? (
                                     <>
                                       <p className="whitespace-pre-wrap text-sm text-ink/80">{response.response || "—"}</p>
+                                      {parseAttachmentList(response.studentResponseAttachments).map((a) => (
+                                        <div key={a.url} className="mt-1 rounded border border-ink/10 bg-ink/5 p-2">
+                                          {a.type === "image" && (
+                                            <a href={a.url} target="_blank" rel="noopener noreferrer" className="block">
+                                              <img src={a.url} alt={a.name} className="max-h-32 rounded object-contain" />
+                                              <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
+                                            </a>
+                                          )}
+                                          {a.type === "audio" && (
+                                            <div>
+                                              <p className="text-xs text-ink/60 mb-0.5">{a.name}</p>
+                                              <audio src={a.url} controls className="h-8 w-full max-w-sm" />
+                                            </div>
+                                          )}
+                                          {(a.type === "archive" || !["image", "audio"].includes(a.type)) && (
+                                            <a href={a.url} download={a.name} className="text-accent hover:underline flex items-center gap-1 text-xs">
+                                              📎 {a.name}
+                                            </a>
+                                          )}
+                                        </div>
+                                      ))}
                                       {(response.teacherFeedback || feedbackAttachments.length > 0) && (
                                         <div className="mt-1 rounded border border-accent/15 bg-accent/5 px-2 py-1.5 space-y-1">
                                           <p className="text-xs font-medium text-accent/70">Your feedback</p>
@@ -716,6 +765,27 @@ export function HomeworkEditor({
                                     </p>
                                   )}
                                   <p className="whitespace-pre-wrap text-sm text-ink/80">{r.response || "—"}</p>
+                                  {parseAttachmentList(r.studentResponseAttachments).map((a) => (
+                                    <div key={a.url} className="mt-1 rounded border border-ink/10 bg-ink/5 p-2">
+                                      {a.type === "image" && (
+                                        <a href={a.url} target="_blank" rel="noopener noreferrer" className="block">
+                                          <img src={a.url} alt={a.name} className="max-h-32 rounded object-contain" />
+                                          <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
+                                        </a>
+                                      )}
+                                      {a.type === "audio" && (
+                                        <div>
+                                          <p className="text-xs text-ink/60 mb-0.5">{a.name}</p>
+                                          <audio src={a.url} controls className="h-8 w-full max-w-sm" />
+                                        </div>
+                                      )}
+                                      {(a.type === "archive" || !["image", "audio"].includes(a.type)) && (
+                                        <a href={a.url} download={a.name} className="text-accent hover:underline flex items-center gap-1 text-xs">
+                                          📎 {a.name}
+                                        </a>
+                                      )}
+                                    </div>
+                                  ))}
                                   {(r.teacherFeedback || feedbackAttachments.length > 0) && (
                                     <div className="mt-1 rounded border border-accent/15 bg-accent/5 px-2 py-1.5 space-y-1">
                                       <p className="text-xs font-medium text-accent/70">Your feedback</p>
@@ -764,6 +834,7 @@ export function HomeworkEditor({
                       type="button"
                       onClick={() => {
                         setEditing(item);
+                        setEditingEmoji(item.emoji ?? "");
                         setEditingAttachments(parseAttachments(item));
                         setEditingAssignment(encodeAssignment(item.studentId, item.groupId));
                       }}
@@ -860,6 +931,7 @@ export function HomeworkEditor({
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
+                              {item.emoji && <span>{item.emoji}</span>}
                               <h3 className="font-medium text-ink/60 line-through">{item.title}</h3>
                               <span className="text-xs text-ink/40">({assignmentLabel(item)})</span>
                               {item.updatedAt && (
@@ -883,6 +955,11 @@ export function HomeworkEditor({
                                       </p>
                                     )}
                                     <p className="whitespace-pre-wrap text-ink/50 mt-0.5">{r.response || "—"}</p>
+                                    {parseAttachmentList(r.studentResponseAttachments).length > 0 && (
+                                      <p className="text-xs text-ink/40 mt-1">
+                                        📎 {parseAttachmentList(r.studentResponseAttachments).map((a) => a.name).join(", ")}
+                                      </p>
+                                    )}
                                   </div>
                                 ))}
                               </div>

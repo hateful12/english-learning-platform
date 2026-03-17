@@ -31,6 +31,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!process.env.OPENAI_API_KEY?.trim()) {
+      return NextResponse.json(
+        { error: "Assessment service is not configured. Please contact your teacher." },
+        { status: 503 }
+      );
+    }
     const { id: assessmentId } = await params;
     const studentId = await getStudentId();
     if (!studentId) {

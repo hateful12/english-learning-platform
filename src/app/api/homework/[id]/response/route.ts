@@ -24,6 +24,12 @@ export async function POST(
   }
   const text = (response ?? "").trim();
 
+  const attachmentsRaw = (body as { attachments?: unknown })?.attachments;
+  const attachmentsJson =
+    Array.isArray(attachmentsRaw) && attachmentsRaw.every((a: unknown) => a && typeof (a as { url?: string }).url === "string")
+      ? JSON.stringify(attachmentsRaw)
+      : "[]";
+
   const homework = await prisma.homework.findUnique({
     where: { id: homeworkId },
     select: { id: true, studentId: true, groupId: true },
@@ -49,8 +55,8 @@ export async function POST(
     where: {
       homeworkId_studentId: { homeworkId, studentId },
     },
-    create: { homeworkId, studentId, response: text },
-    update: { response: text },
+    create: { homeworkId, studentId, response: text, studentResponseAttachments: attachmentsJson },
+    update: { response: text, studentResponseAttachments: attachmentsJson },
   });
   return NextResponse.json(updated);
 }

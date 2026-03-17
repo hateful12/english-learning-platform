@@ -18,9 +18,11 @@ export async function PATCH(
         ? JSON.stringify(body.attachments)
         : "[]"
       : undefined;
+  const emojiStr = body.emoji !== undefined ? (typeof body.emoji === "string" ? body.emoji.trim().slice(0, 10) : "") : undefined;
   const item = await prisma.homework.update({
     where: { id },
     data: {
+      ...(emojiStr !== undefined && { emoji: emojiStr }),
       title: body.title,
       description: body.description,
       ...(attachmentsJson !== undefined && { attachments: attachmentsJson }),

@@ -36,6 +36,12 @@ interface RawQuestion {
 
 export async function POST() {
   try {
+    if (!process.env.OPENAI_API_KEY?.trim()) {
+      return NextResponse.json(
+        { error: "Assessment service is not configured. Please contact your teacher." },
+        { status: 503 }
+      );
+    }
     const studentId = await getStudentId();
     if (!studentId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

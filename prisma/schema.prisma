@@ -51,6 +51,7 @@ model Invite {
 
 model Homework {
   id          String   @id @default(cuid())
+  emoji       String   @default("")
   title       String
   description String
   attachments String   @default("[]") // JSON array of { url, name, type }
@@ -69,6 +70,7 @@ model HomeworkResponse {
   homeworkId                 String
   studentId                  String
   response                   String
+  studentResponseAttachments  String    @default("[]") // JSON array of { url, name, type }
   submittedAt                DateTime  @default(now())
   teacherFeedback            String?
   teacherFeedbackAttachments String    @default("[]") // JSON array of { url, name, type }

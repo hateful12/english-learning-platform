@@ -158,6 +158,7 @@ export async function GET() {
             ? responses.map((r) => ({
                 id: r.id,
                 response: r.response,
+                studentResponseAttachments: (r as { studentResponseAttachments?: string }).studentResponseAttachments ?? "[]",
                 submittedAt: r.submittedAt,
                 teacherFeedback: r.teacherFeedback ?? null,
                 teacherFeedbackAttachments: r.teacherFeedbackAttachments ?? "[]",
@@ -191,10 +192,11 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
-    const { title, description, studentId, groupId, attachments } = (body as Record<string, unknown>) ?? {};
+    const { title, description, studentId, groupId, attachments, emoji } = (body as Record<string, unknown>) ?? {};
     if (!title || typeof title !== "string") {
       return NextResponse.json({ error: "Title required" }, { status: 400 });
     }
+    const emojiStr = typeof emoji === "string" ? emoji.trim().slice(0, 10) : "";
     const attachmentsJson =
       Array.isArray(attachments) && attachments.every((a: unknown) => a && typeof (a as { url?: string }).url === "string")
         ? JSON.stringify(attachments)
@@ -228,6 +230,7 @@ export async function POST(request: NextRequest) {
     // Create without groupId first (old client doesn't know the field)
     const item = await prisma.homework.create({
       data: {
+        emoji: emojiStr,
         title,
         description: (description as string) ?? "",
         attachments: attachmentsJson,

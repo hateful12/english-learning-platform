@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScheduleViewer } from "./ScheduleViewer";
 import { WordleTab } from "./WordleTab";
 
@@ -8,6 +8,7 @@ type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" |
 type HomeworkResponse = {
   id: string;
   response: string;
+  studentResponseAttachments?: string;
   submittedAt: string;
   teacherFeedback?: string | null;
   teacherFeedbackAttachments?: string;
@@ -15,6 +16,7 @@ type HomeworkResponse = {
 };
 type Homework = {
   id: string;
+  emoji?: string;
   title: string;
   description: string;
   status?: string;
@@ -81,6 +83,15 @@ function parseFeedbackAttachments(raw: string | undefined): HomeworkAttachment[]
   }
 }
 
+function parseStudentResponseAttachments(raw: string | undefined): HomeworkAttachment[] {
+  try {
+    const arr = JSON.parse(typeof raw === "string" ? raw : "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
 function TeacherFeedbackDisplay({
   feedback,
   attachments,
@@ -119,18 +130,51 @@ function TeacherFeedbackDisplay({
 function HomeworkSubmit({
   homeworkId,
   initialResponse,
+  initialAttachments,
   submitting,
   onSubmit,
 }: {
   homeworkId: string;
   initialResponse: string;
+  initialAttachments: HomeworkAttachment[];
   submitting: boolean;
-  onSubmit: (id: string, response: string) => Promise<void>;
+  onSubmit: (id: string, response: string, attachments: HomeworkAttachment[]) => Promise<void>;
 }) {
   const [response, setResponse] = useState(initialResponse);
+  const [attachments, setAttachments] = useState<HomeworkAttachment[]>(initialAttachments);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     setResponse(initialResponse);
-  }, [initialResponse]);
+    setAttachments(initialAttachments);
+  }, [initialResponse, initialAttachments]);
+
+  async function uploadFile(file: File) {
+    const formData = new FormData();
+    formData.set("file", file);
+    const res = await fetch("/api/upload", { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Upload failed");
+    }
+    return res.json() as Promise<{ url: string; name: string; type: "image" | "audio" | "archive" }>;
+  }
+
+  async function handleFileChange(fileList: FileList | null) {
+    if (!fileList?.length) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(fileList)) {
+        const data = await uploadFile(file).catch((e) => { alert(e.message); return null; });
+        if (data) setAttachments((prev) => [...prev, { url: data.url, name: data.name, type: data.type }]);
+      }
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   return (
     <div className="mt-3">
       <label className="block text-sm font-medium text-ink/80 mb-1">Your response</label>
@@ -142,9 +186,44 @@ function HomeworkSubmit({
         rows={3}
         disabled={submitting}
       />
+      <div className="mt-2 flex flex-wrap gap-2 items-center">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,audio/*,.zip,.rar,.7z,.gz,.pdf,.doc,.docx"
+          multiple
+          className="hidden"
+          onChange={(e) => handleFileChange(e.target.files)}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading || submitting}
+          className="flex items-center gap-1.5 rounded-md bg-ink/5 px-3 py-1.5 text-sm text-ink/80 hover:bg-ink/10 disabled:opacity-50"
+        >
+          {uploading ? "Uploading…" : "📎 Add photo or file"}
+        </button>
+        {attachments.length > 0 && (
+          <ul className="flex flex-wrap gap-2">
+            {attachments.map((a, i) => (
+              <li key={a.url} className="flex items-center gap-1 rounded bg-ink/5 px-2 py-1 text-xs">
+                <span className="text-ink/70 truncate max-w-[120px]">{a.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setAttachments((p) => p.filter((_, j) => j !== i))}
+                  className="text-red-500 hover:text-red-700"
+                  aria-label="Remove"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <button
         type="button"
-        onClick={() => onSubmit(homeworkId, response)}
+        onClick={() => onSubmit(homeworkId, response, attachments)}
         disabled={submitting}
         className="mt-2 btn-primary"
       >
@@ -213,13 +292,13 @@ export function StudentDashboard() {
     await loadHomework();
   }
 
-  async function submitResponse(homeworkId: string, response: string) {
+  async function submitResponse(homeworkId: string, response: string, attachments: HomeworkAttachment[] = []) {
     setSubmittingId(homeworkId);
     try {
       const res = await fetch(`/api/homework/${homeworkId}/response`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ response: response.trim() }),
+        body: JSON.stringify({ response: response.trim(), attachments }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -328,7 +407,7 @@ function HomeworkItem({
   item: Homework;
   readOnly?: boolean;
   submittingId: string | null;
-  onSubmit: (id: string, response: string) => Promise<void>;
+  onSubmit: (id: string, response: string, attachments: HomeworkAttachment[]) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
 }) {
   const [deleting, setDeleting] = useState(false);
@@ -348,7 +427,10 @@ function HomeworkItem({
   return (
     <li className="border-b border-ink/5 pb-5 last:border-0 last:pb-0">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-medium text-ink">{item.title}</h3>
+        <h3 className="font-medium text-ink">
+          {item.emoji && <span className="mr-2">{item.emoji}</span>}
+          {item.title}
+        </h3>
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs text-ink/40">
             {new Date(item.createdAt).toLocaleDateString()}
@@ -400,14 +482,36 @@ function HomeworkItem({
         <HomeworkSubmit
           homeworkId={item.id}
           initialResponse={myResponse?.response ?? ""}
+          initialAttachments={parseStudentResponseAttachments(myResponse?.studentResponseAttachments)}
           submitting={submittingId === item.id}
           onSubmit={onSubmit}
         />
       )}
-      {readOnly && myResponse?.response && (
+      {readOnly && (myResponse?.response || parseStudentResponseAttachments(myResponse?.studentResponseAttachments).length > 0) && (
         <div className="mt-3">
           <p className="text-xs font-medium text-ink/50 mb-1">Your response</p>
-          <p className="whitespace-pre-wrap text-sm text-ink/70">{myResponse.response}</p>
+          {myResponse.response && <p className="whitespace-pre-wrap text-sm text-ink/70">{myResponse.response}</p>}
+          {parseStudentResponseAttachments(myResponse?.studentResponseAttachments).map((a) => (
+            <div key={a.url} className="mt-2 rounded border border-ink/10 bg-ink/5 p-2">
+              {a.type === "image" && (
+                <a href={a.url} target="_blank" rel="noopener noreferrer" className="block">
+                  <img src={a.url} alt={a.name} className="max-h-48 rounded object-contain" />
+                  <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
+                </a>
+              )}
+              {a.type === "audio" && (
+                <div>
+                  <p className="text-xs text-ink/60 mb-1">{a.name}</p>
+                  <audio src={a.url} controls className="w-full max-w-md" />
+                </div>
+              )}
+              {(a.type === "archive" || !["image", "audio"].includes(a.type)) && (
+                <a href={a.url} download={a.name} className="text-accent hover:underline flex items-center gap-1">
+                  <span className="text-ink/70">📎</span> {a.name}
+                </a>
+              )}
+            </div>
+          ))}
         </div>
       )}
       {myResponse && (myResponse.teacherFeedback || (myResponse.teacherFeedbackAttachments && myResponse.teacherFeedbackAttachments !== "[]")) && (
@@ -439,7 +543,7 @@ function HomeworkTab({
   archiveMonth: string;
   onArchiveToggle: () => void;
   onArchiveMonthChange: (m: string) => void;
-  onSubmit: (id: string, response: string) => Promise<void>;
+  onSubmit: (id: string, response: string, attachments: HomeworkAttachment[]) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
   const months = Array.from(
