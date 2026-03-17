@@ -13,26 +13,26 @@ export default async function TeacherDashboardPage() {
   return (
     <div className="min-h-screen">
       <header
-        className="sticky top-0 z-10 border-b border-ink/10 overflow-hidden"
+        className="sticky top-0 z-10 border-b border-white/10 overflow-hidden"
         style={{
-          backgroundImage: "linear-gradient(to bottom, rgba(255,255,255,0.35) 0%, transparent 70%), url(/london-skyline-bg.png)",
+          backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 60%), url(/london-skyline-bg.png)",
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundRepeat: "no-repeat",
         }}
       >
-        <div className="flex items-center justify-between px-6 py-4 md:px-8 relative z-10 min-h-[130px]">
+        <div className="flex items-center justify-between px-6 py-4 md:px-8 relative z-10 min-h-[130px] text-white">
           <div className="flex items-center gap-3">
             <Logo />
-            <span className="hidden sm:inline-flex items-center rounded-full border border-accent/30 bg-accent/8 px-2.5 py-0.5 text-xs font-semibold text-accent tracking-wide uppercase">
+            <span className="hidden sm:inline-flex items-center rounded-full border border-white/40 bg-white/10 px-2.5 py-0.5 text-xs font-semibold text-white tracking-wide uppercase">
               Teacher
             </span>
           </div>
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-sm text-ink/60 hover:text-ink transition-colors">
+            <Link href="/" className="text-sm text-white/80 hover:text-white transition-colors">
               View as student
             </Link>
-            <LogoutButton />
+            <LogoutButton className="rounded-lg border border-white/40 bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20 transition-colors" />
           </div>
         </div>
       </header>
