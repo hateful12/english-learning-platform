@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ScheduleViewer } from "./ScheduleViewer";
+import { WordleGame } from "./WordleGame";
 
 type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
 type HomeworkResponse = {
@@ -24,13 +25,14 @@ type Homework = {
   responses?: HomeworkResponse[];
 };
 
-type Tab = "schedule" | "homework" | "payments" | "progress-test";
+type Tab = "schedule" | "homework" | "payments" | "progress-test" | "games";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "schedule", label: "Schedule", icon: "📅" },
   { id: "homework", label: "Homework", icon: "📝" },
   { id: "payments", label: "Payments", icon: "💳" },
   { id: "progress-test", label: "Progress Test", icon: "🎯" },
+  { id: "games", label: "Games", icon: "🎮" },
 ];
 
 // ─── Assessment types ────────────────────────────────────────────────────────
@@ -306,6 +308,13 @@ export function StudentDashboard() {
 
         {/* Progress Test */}
         {activeTab === "progress-test" && <ProgressTestTab assignedLevel={studentInfo?.level ?? null} />}
+
+        {/* Games */}
+        {activeTab === "games" && (
+          <div className="card p-6">
+            <WordleGame />
+          </div>
+        )}
       </div>
     </div>
   );
