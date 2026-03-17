@@ -99,12 +99,12 @@ export async function PATCH(request: NextRequest) {
       });
     } else {
       if (paidAmount > 0 || paidAt) {
+        const updateData: { amount?: number; receivedAt?: Date } = {};
+        if (paidAmount > 0) updateData.amount = paidAmount;
+        if (paidAt) updateData.receivedAt = receivedAt;
         await prisma.payment.update({
           where: { id: lesson.paymentId },
-          data: {
-            ...(paidAmount > 0 ? { amount: paidAmount } : {}),
-            ...(paidAt ? { receivedAt } : {}),
-          },
+          data: updateData,
         });
       }
       await prisma.scheduledLesson.update({

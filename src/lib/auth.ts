@@ -34,9 +34,10 @@ export async function setTeacherSession(teacherId: string) {
   const maxAge = 60 * 60 * 24 * 7;
   const token = await signToken({ sub: teacherId, role: "teacher" }, maxAge);
   const cookieStore = await cookies();
+  const secure = process.env.NODE_ENV === "production" && process.env.COOKIE_SECURE !== "false";
   cookieStore.set(TEACHER_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax",
     maxAge,
     path: "/",
@@ -82,9 +83,10 @@ export async function setStudentSession(studentId: string) {
   const maxAge = 60 * 60 * 24 * 7;
   const token = await signToken({ sub: studentId, role: "student" }, maxAge);
   const cookieStore = await cookies();
+  const secure = process.env.NODE_ENV === "production" && process.env.COOKIE_SECURE !== "false";
   cookieStore.set(STUDENT_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax",
     maxAge,
     path: "/",
