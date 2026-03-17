@@ -25,6 +25,18 @@ model Student {
   payments            Payment[]
   groupLessonPayments GroupLessonPayment[]
   assessments         Assessment[]
+  wordleGames         WordleGame[]
+}
+
+model WordleGame {
+  id         String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date      String   // YYYY-MM-DD
+  result    String   // "won" | "lost"
+  tries     Int      // 1-6 for won, 7 for lost
+  playedAt  DateTime @default(now())
+  @@unique([studentId, date])
 }
 
 model Invite {

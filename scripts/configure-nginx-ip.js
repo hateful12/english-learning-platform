@@ -10,7 +10,7 @@ conn
   .on("ready", () => {
     const nginxConf = `server {
     listen 80 default_server;
-    server_name _ 194.61.52.14;
+    server_name _ 194.61.52.14 194.61.52.14.nip.io;
     client_max_body_size 30m;
     location / {
         proxy_pass http://127.0.0.1:3000;

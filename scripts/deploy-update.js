@@ -61,11 +61,12 @@ async function main() {
     );
     await run(conn, `cd ${APP_DIR} && npm ci`, "2. npm ci");
     await run(conn, `cd ${APP_DIR} && npx prisma db push`, "3. Prisma db push");
-    await run(
-      conn,
-      `cd ${APP_DIR} && node scripts/clear-db-keep-admin.js`,
-      "4. Clear DB (keep admin)"
-    );
+    // Skip clear-db for production (preserve student data). Run manually if needed.
+    if (process.env.DEPLOY_CLEAR_DB === "1") {
+      await run(conn, `cd ${APP_DIR} && node scripts/clear-db-keep-admin.js`, "4. Clear DB (keep admin)");
+    } else {
+      console.log("\n>>> 4. Skip clear-db (preserve data). Set DEPLOY_CLEAR_DB=1 to clear.");
+    }
     await run(conn, `cd ${APP_DIR} && npm run build`, "5. Build");
     await run(conn, `cd ${APP_DIR} && pm2 restart english-app`, "6. PM2 restart");
 
