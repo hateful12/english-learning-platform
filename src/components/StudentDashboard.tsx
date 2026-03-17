@@ -487,11 +487,11 @@ function HomeworkItem({
           onSubmit={onSubmit}
         />
       )}
-      {readOnly && (myResponse?.response || parseStudentResponseAttachments(myResponse?.studentResponseAttachments).length > 0) && (
+      {readOnly && myResponse && (myResponse.response || parseStudentResponseAttachments(myResponse.studentResponseAttachments).length > 0) && (
         <div className="mt-3">
           <p className="text-xs font-medium text-ink/50 mb-1">Your response</p>
           {myResponse.response && <p className="whitespace-pre-wrap text-sm text-ink/70">{myResponse.response}</p>}
-          {parseStudentResponseAttachments(myResponse?.studentResponseAttachments).map((a) => (
+          {parseStudentResponseAttachments(myResponse.studentResponseAttachments).map((a) => (
             <div key={a.url} className="mt-2 rounded border border-ink/10 bg-ink/5 p-2">
               {a.type === "image" && (
                 <a href={a.url} target="_blank" rel="noopener noreferrer" className="block">
