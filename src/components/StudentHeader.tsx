@@ -15,7 +15,7 @@ export function StudentHeader({ student }: { student: Student }) {
   }
 
   return (
-    <header className="header-london-bg sticky top-0 z-10 border-b border-ink/10 bg-white/70 backdrop-blur-md">
+    <header className="header-london-bg sticky top-0 z-10 border-b border-ink/10">
       <div className="flex items-center justify-between px-6 py-1 md:px-8">
         <Logo />
         <div className="flex items-center gap-4">

@@ -17,7 +17,7 @@ export default async function HomePage() {
   if (!student) {
     return (
       <div className="min-h-screen">
-        <header className="header-london-bg border-b border-ink/10 bg-white/70 backdrop-blur-md">
+        <header className="header-london-bg border-b border-ink/10">
           <div className="flex items-center justify-between px-6 py-1 md:px-10">
             <Logo />
             <div className="flex gap-3">

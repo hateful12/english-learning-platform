@@ -21,7 +21,6 @@ body {
     background-size: cover;
     background-position: center bottom;
     background-repeat: no-repeat;
-    background-color: #f0f7ff;
   }
   .card {
     @apply rounded-xl border border-ink/10 bg-white/80 shadow-sm backdrop-blur;

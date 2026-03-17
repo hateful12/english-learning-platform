@@ -12,7 +12,7 @@ export default async function TeacherDashboardPage() {
   }
   return (
     <div className="min-h-screen">
-      <header className="header-london-bg sticky top-0 z-10 border-b border-ink/10 bg-white/70 backdrop-blur-md">
+      <header className="header-london-bg sticky top-0 z-10 border-b border-ink/10">
         <div className="flex items-center justify-between px-6 py-3 md:px-8">
           <div className="flex items-center gap-3">
             <Logo />
