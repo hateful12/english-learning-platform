@@ -102,8 +102,8 @@ export async function PATCH(request: NextRequest) {
         await prisma.payment.update({
           where: { id: lesson.paymentId },
           data: {
-            ...(paidAmount > 0 && { amount: paidAmount }),
-            ...(paidAt && { receivedAt }),
+            ...(paidAmount > 0 ? { amount: paidAmount } : {}),
+            ...(paidAt ? { receivedAt } : {}),
           },
         });
       }
