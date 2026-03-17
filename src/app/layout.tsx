@@ -17,6 +17,10 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: "senira.english — Learn English with Senira",
   description: "Your platform for homework, lessons, and payment info.",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
