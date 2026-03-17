@@ -16,7 +16,6 @@ type HomeworkResponse = {
 };
 type Homework = {
   id: string;
-  emoji?: string;
   title: string;
   description: string;
   status?: string;
@@ -427,10 +426,7 @@ function HomeworkItem({
   return (
     <li className="border-b border-ink/5 pb-5 last:border-0 last:pb-0">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-medium text-ink">
-          {item.emoji && <span className="mr-2">{item.emoji}</span>}
-          {item.title}
-        </h3>
+        <h3 className="font-medium text-ink">{item.title}</h3>
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs text-ink/40">
             {new Date(item.createdAt).toLocaleDateString()}

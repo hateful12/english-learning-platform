@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { getStudentId } from "@/lib/auth";
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
 
 function buildEvaluatePrompt(level: string): string {
   return `You are an English language progress-test expert.
@@ -31,9 +31,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!process.env.OPENAI_API_KEY?.trim()) {
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    if (!apiKey) {
       return NextResponse.json(
-        { error: "Assessment service is not configured. Please contact your teacher." },
+        { error: "Assessment service is not configured. Add OPENAI_API_KEY to .env on the server and run: pm2 restart english-app" },
         { status: 503 }
       );
     }
@@ -145,15 +146,16 @@ export async function POST(
   } catch (err) {
     console.error("POST /api/assessment/[id]/submit error:", err);
     const errObj = err as Record<string, unknown>;
-    if (errObj?.status === 429 || errObj?.code === "insufficient_quota") {
+    const status = errObj?.status ?? errObj?.statusCode;
+    if (status === 429 || errObj?.code === "insufficient_quota") {
       return NextResponse.json(
         { error: "Assessment service is temporarily unavailable. Please try again later." },
         { status: 503 }
       );
     }
-    if (errObj?.status === 401) {
+    if (status === 401) {
       return NextResponse.json(
-        { error: "Assessment service is not configured. Please contact your teacher." },
+        { error: "Invalid OpenAI API key. The teacher must set OPENAI_API_KEY in .env and restart the app (pm2 restart)." },
         { status: 503 }
       );
     }

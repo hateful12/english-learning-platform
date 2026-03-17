@@ -17,7 +17,6 @@ type ResponseItem = {
 };
 type Item = {
   id: string;
-  emoji?: string;
   title: string;
   description: string;
   status?: string;
@@ -292,6 +291,26 @@ function encodeAssignment(studentId: string | null | undefined, groupId: string 
   return "";
 }
 
+const EMOJI_PICKER = ["📝", "✏️", "📚", "📖", "🎯", "✅", "⭐", "📌", "💡", "📋", "🔊", "🎧"];
+
+function EmojiInsert({ onInsert }: { onInsert: (emoji: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {EMOJI_PICKER.map((e) => (
+        <button
+          key={e}
+          type="button"
+          onClick={() => onInsert(e)}
+          className="text-lg leading-none p-1 rounded hover:bg-ink/10 transition-colors"
+          title="Insert emoji"
+        >
+          {e}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function decodeAssignment(value: string): { studentId: string | null; groupId: string | null } {
   if (value.startsWith("g:")) return { studentId: null, groupId: value.slice(2) };
   if (value.startsWith("s:")) return { studentId: value.slice(2), groupId: null };
@@ -336,12 +355,10 @@ export function HomeworkEditor({
   }
 
   const [title, setTitle] = useState("");
-  const [emoji, setEmoji] = useState("");
   const [description, setDescription] = useState("");
   const [assignment, setAssignment] = useState<string>("");
   const [attachments, setAttachments] = useState<HomeworkAttachment[]>([]);
   const [editing, setEditing] = useState<Item | null>(null);
-  const [editingEmoji, setEditingEmoji] = useState("");
   const [editingAttachments, setEditingAttachments] = useState<HomeworkAttachment[]>([]);
   const [editingAssignment, setEditingAssignment] = useState<string>("");
   const [uploading, setUploading] = useState(false);
@@ -389,7 +406,6 @@ export function HomeworkEditor({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        emoji: emoji.trim(),
         title: title.trim(),
         description: description.trim(),
         studentId,
@@ -398,7 +414,6 @@ export function HomeworkEditor({
       }),
     });
     setTitle("");
-    setEmoji("");
     setDescription("");
     setAssignment("");
     setAttachments([]);
@@ -429,7 +444,6 @@ export function HomeworkEditor({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        emoji: editingEmoji.trim(),
         title: editing.title,
         description: editing.description,
         studentId,
@@ -438,7 +452,6 @@ export function HomeworkEditor({
       }),
     });
     setEditing(null);
-    setEditingEmoji("");
     setEditingAttachments([]);
     setEditingAssignment("");
     onUpdate();
@@ -494,32 +507,29 @@ export function HomeworkEditor({
     <div className="space-y-4">
       <form onSubmit={handleAdd} className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex-1 space-y-2">
-          <div className="flex flex-wrap gap-2">
-            <input
-              type="text"
-              value={emoji}
-              onChange={(e) => setEmoji(e.target.value)}
-              placeholder="😊"
-              className="input w-12 text-center"
-              maxLength={4}
-              title="Emoji (optional)"
-            />
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Homework title"
-              className="input flex-1 min-w-[180px]"
-            />
+          <div className="flex flex-wrap gap-2 items-start">
+            <div className="flex-1 min-w-[180px] space-y-1">
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Homework title (emoji allowed)"
+                className="input w-full"
+              />
+              <EmojiInsert onInsert={(e) => setTitle((prev) => prev + e)} />
+            </div>
             <AssignmentSelect value={assignment} onChange={setAssignment} />
           </div>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Description (optional)"
-            className="input min-h-[80px] resize-y w-full"
-            rows={2}
-          />
+          <div className="space-y-1">
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Description (optional, emoji allowed)"
+              className="input min-h-[80px] resize-y w-full"
+              rows={2}
+            />
+            <EmojiInsert onInsert={(e) => setDescription((prev) => prev + e)} />
+          </div>
           <div className="space-y-1">
             <input
               ref={fileInputRef}
@@ -559,27 +569,25 @@ export function HomeworkEditor({
           <li key={item.id} className="flex flex-col gap-2 rounded-lg border border-ink/10 bg-white p-3">
             {editing?.id === item.id ? (
               <form onSubmit={handleUpdate} className="space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    value={editingEmoji}
-                    onChange={(e) => setEditingEmoji(e.target.value)}
-                    placeholder="😊"
-                    className="input w-12 text-center"
-                    maxLength={4}
-                    title="Emoji"
-                  />
+                <div className="space-y-1">
                   <input
                     value={editing.title}
                     onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-                    className="input flex-1"
+                    className="input w-full"
+                    placeholder="Title (emoji allowed)"
                   />
+                  <EmojiInsert onInsert={(e) => setEditing((prev) => prev ? { ...prev, title: prev.title + e } : null)} />
                 </div>
-                <textarea
-                  value={editing.description}
-                  onChange={(e) => setEditing({ ...editing, description: e.target.value })}
-                  className="input min-h-[60px] resize-y"
-                  rows={2}
-                />
+                <div className="space-y-1">
+                  <textarea
+                    value={editing.description}
+                    onChange={(e) => setEditing({ ...editing, description: e.target.value })}
+                    className="input min-h-[60px] resize-y w-full"
+                    rows={2}
+                    placeholder="Description (emoji allowed)"
+                  />
+                  <EmojiInsert onInsert={(e) => setEditing((prev) => prev ? { ...prev, description: (prev.description ?? "") + e } : null)} />
+                </div>
                 <div className="space-y-1">
                   <input
                     ref={editFileInputRef}
@@ -611,7 +619,7 @@ export function HomeworkEditor({
                 <AssignmentSelect value={editingAssignment} onChange={setEditingAssignment} />
                 <div className="flex gap-2">
                   <button type="submit" className="btn-primary">Save</button>
-                  <button type="button" onClick={() => { setEditing(null); setEditingEmoji(""); setEditingAttachments([]); setEditingAssignment(""); }} className="btn-secondary">Cancel</button>
+                  <button type="button" onClick={() => { setEditing(null); setEditingAttachments([]); setEditingAssignment(""); }} className="btn-secondary">Cancel</button>
                 </div>
               </form>
             ) : (
@@ -619,7 +627,6 @@ export function HomeworkEditor({
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {item.emoji && <span>{item.emoji}</span>}
                       <h3 className="font-medium text-ink">{item.title}</h3>
                       <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                         item.groupId
@@ -834,7 +841,6 @@ export function HomeworkEditor({
                       type="button"
                       onClick={() => {
                         setEditing(item);
-                        setEditingEmoji(item.emoji ?? "");
                         setEditingAttachments(parseAttachments(item));
                         setEditingAssignment(encodeAssignment(item.studentId, item.groupId));
                       }}
@@ -931,7 +937,6 @@ export function HomeworkEditor({
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              {item.emoji && <span>{item.emoji}</span>}
                               <h3 className="font-medium text-ink/60 line-through">{item.title}</h3>
                               <span className="text-xs text-ink/40">({assignmentLabel(item)})</span>
                               {item.updatedAt && (

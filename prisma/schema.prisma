@@ -51,7 +51,7 @@ model Invite {
 
 model Homework {
   id          String   @id @default(cuid())
-  emoji       String   @default("")
+  emoji       String   @default("") // kept for backwards compat; emoji now in title/description
   title       String
   description String
   attachments String   @default("[]") // JSON array of { url, name, type }
