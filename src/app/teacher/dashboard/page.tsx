@@ -12,19 +12,19 @@ export default async function TeacherDashboardPage() {
   }
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-ink/10 bg-white/80 backdrop-blur-md">
+      <header className="header-london-bg sticky top-0 z-10 border-b border-white/20 bg-black/40 backdrop-blur-sm">
         <div className="flex items-center justify-between px-6 py-3 md:px-8">
           <div className="flex items-center gap-3">
-            <Logo />
-            <span className="hidden sm:inline-flex items-center rounded-full border border-accent/30 bg-accent/8 px-2.5 py-0.5 text-xs font-semibold text-accent tracking-wide uppercase">
+            <Logo variant="light" />
+            <span className="hidden sm:inline-flex items-center rounded-full border border-white/40 bg-white/15 px-2.5 py-0.5 text-xs font-semibold text-white tracking-wide uppercase">
               Teacher
             </span>
           </div>
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-sm text-ink/60 hover:text-ink transition-colors">
+            <Link href="/" className="text-sm text-white/90 hover:text-white transition-colors">
               View as student
             </Link>
-            <LogoutButton />
+            <LogoutButton className="rounded-lg px-4 py-2 text-sm font-medium text-white/95 hover:text-white border border-white/40 bg-white/10 hover:bg-white/20 transition-colors focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-transparent" />
           </div>
         </div>
       </header>
