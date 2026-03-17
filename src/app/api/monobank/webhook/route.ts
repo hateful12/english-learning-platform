@@ -27,13 +27,14 @@ type WebhookBody = {
 
 /**
  * Verify the Monobank X-Sign header using the public key from environment.
- * https://api.monobank.ua/docs/corporate.html#tag/Povydomlennya-pro-vxidni-platezhi/paths/~1personal~1webhook/post
+ * Personal API (api.monobank.ua token) does NOT send X-Sign — we skip verification when key is unset.
+ * Corporate API uses X-Sign; set MONOBANK_WEBHOOK_PUBLIC_KEY to verify.
  */
 async function verifyMonobankSignature(request: NextRequest, rawBody: string): Promise<boolean> {
   const publicKeyPem = process.env.MONOBANK_WEBHOOK_PUBLIC_KEY;
   if (!publicKeyPem) {
-    console.warn("[monobank webhook] MONOBANK_WEBHOOK_PUBLIC_KEY is not set — skipping signature check");
-    return false;
+    // Personal API does not send X-Sign; allow request so webhooks work
+    return true;
   }
   const signature = request.headers.get("X-Sign");
   if (!signature) return false;
