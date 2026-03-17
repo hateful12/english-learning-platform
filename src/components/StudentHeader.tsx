@@ -15,17 +15,17 @@ export function StudentHeader({ student }: { student: Student }) {
   }
 
   return (
-    <header className="header-london-bg sticky top-0 z-10 border-b border-white/20 bg-black/40 backdrop-blur-sm">
+    <header className="header-london-bg sticky top-0 z-10 border-b border-ink/10 bg-white/70 backdrop-blur-md">
       <div className="flex items-center justify-between px-6 py-1 md:px-8">
-        <Logo variant="light" />
+        <Logo />
         <div className="flex items-center gap-4">
-          <span className="text-sm text-white/90">
+          <span className="rounded-lg border border-ink/15 bg-ink/5 px-3 py-1.5 text-sm text-ink">
             {student.name || student.email}
           </span>
           <button
             type="button"
             onClick={handleLogout}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-white/95 hover:text-white border border-white/40 bg-white/10 hover:bg-white/20 transition-colors focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-transparent"
+            className="btn-secondary text-sm"
           >
             Log out
           </button>

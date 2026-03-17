@@ -17,14 +17,14 @@ export default async function HomePage() {
   if (!student) {
     return (
       <div className="min-h-screen">
-        <header className="header-london-bg border-b border-white/20 bg-black/40 backdrop-blur-sm">
+        <header className="header-london-bg border-b border-ink/10 bg-white/70 backdrop-blur-md">
           <div className="flex items-center justify-between px-6 py-1 md:px-10">
-            <Logo variant="light" />
+            <Logo />
             <div className="flex gap-3">
-              <Link href="/login" className="text-sm text-white/90 hover:text-white transition-colors">
+              <Link href="/login" className="text-sm text-ink/60 hover:text-ink transition-colors">
                 Log in
               </Link>
-              <Link href="/teacher" className="text-sm text-white/90 hover:text-white transition-colors">
+              <Link href="/teacher" className="text-sm text-ink/60 hover:text-ink transition-colors">
                 Teacher
               </Link>
             </div>
