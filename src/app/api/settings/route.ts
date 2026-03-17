@@ -7,7 +7,16 @@ const MONOBANK_CARD_KEY = "monobank_card";
 const APP_URL_KEY = "app_url";
 const LESSON_PRICE_KEY = "lesson_price";
 
-export async function GET() {
+function getAppUrl(request: NextRequest): string {
+  const env = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL;
+  if (env) return env.replace(/\/$/, "");
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") || "http";
+  if (host) return `${proto}://${host}`;
+  return "";
+}
+
+export async function GET(request: NextRequest) {
   const teacher = await isTeacherLoggedIn();
   if (!teacher) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -16,11 +25,13 @@ export async function GET() {
   });
 
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  const appUrlFromDb = map[APP_URL_KEY] ?? "";
+  const appUrl = appUrlFromDb || getAppUrl(request);
 
   return NextResponse.json({
     hasMonobankToken: !!map[MONOBANK_TOKEN_KEY],
     monobankCard: map[MONOBANK_CARD_KEY] ?? "",
-    appUrl: map[APP_URL_KEY] ?? "",
+    appUrl,
     lessonPrice: map[LESSON_PRICE_KEY] ? parseInt(map[LESSON_PRICE_KEY], 10) / 100 : "",
   });
 }
@@ -75,15 +86,16 @@ export async function POST(request: NextRequest) {
   if (action === "registerWebhook") {
     const tokenRow = await prisma.settings.findUnique({ where: { key: MONOBANK_TOKEN_KEY } });
     const urlRow = await prisma.settings.findUnique({ where: { key: APP_URL_KEY } });
+    const appUrl = urlRow?.value?.trim() || getAppUrl(request);
 
     if (!tokenRow?.value) {
       return NextResponse.json({ error: "Monobank token not saved yet" }, { status: 400 });
     }
-    if (!urlRow?.value) {
-      return NextResponse.json({ error: "App URL not saved yet" }, { status: 400 });
+    if (!appUrl) {
+      return NextResponse.json({ error: "App URL not set. Save it in Settings or set APP_URL in .env" }, { status: 400 });
     }
 
-    const webhookUrl = `${urlRow.value.replace(/\/$/, "")}/api/monobank/webhook`;
+    const webhookUrl = `${appUrl.replace(/\/$/, "")}/api/monobank/webhook`;
 
     const res = await fetch("https://api.monobank.ua/personal/webhook", {
       method: "POST",
