@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Group } from "./GroupEditor";
+import { EmojiPicker } from "./EmojiPicker";
 
 type Student = { id: string; email: string; name: string | null };
 export type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
@@ -291,25 +292,6 @@ function encodeAssignment(studentId: string | null | undefined, groupId: string 
   return "";
 }
 
-const EMOJI_PICKER = ["📝", "✏️", "📚", "📖", "🎯", "✅", "⭐", "📌", "💡", "📋", "🔊", "🎧"];
-
-function EmojiInsert({ onInsert }: { onInsert: (emoji: string) => void }) {
-  return (
-    <div className="flex flex-wrap gap-1">
-      {EMOJI_PICKER.map((e) => (
-        <button
-          key={e}
-          type="button"
-          onClick={() => onInsert(e)}
-          className="text-lg leading-none p-1 rounded hover:bg-ink/10 transition-colors"
-          title="Insert emoji"
-        >
-          {e}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function decodeAssignment(value: string): { studentId: string | null; groupId: string | null } {
   if (value.startsWith("g:")) return { studentId: null, groupId: value.slice(2) };
@@ -516,7 +498,7 @@ export function HomeworkEditor({
                 placeholder="Homework title (emoji allowed)"
                 className="input w-full"
               />
-              <EmojiInsert onInsert={(e) => setTitle((prev) => prev + e)} />
+              <EmojiPicker onInsert={(e) => setTitle((prev) => prev + e)} />
             </div>
             <AssignmentSelect value={assignment} onChange={setAssignment} />
           </div>
@@ -528,7 +510,7 @@ export function HomeworkEditor({
               className="input min-h-[80px] resize-y w-full"
               rows={2}
             />
-            <EmojiInsert onInsert={(e) => setDescription((prev) => prev + e)} />
+            <EmojiPicker onInsert={(e) => setDescription((prev) => prev + e)} />
           </div>
           <div className="space-y-1">
             <input
@@ -576,7 +558,7 @@ export function HomeworkEditor({
                     className="input w-full"
                     placeholder="Title (emoji allowed)"
                   />
-                  <EmojiInsert onInsert={(e) => setEditing((prev) => prev ? { ...prev, title: prev.title + e } : null)} />
+                  <EmojiPicker onInsert={(e) => setEditing((prev) => prev ? { ...prev, title: prev.title + e } : null)} />
                 </div>
                 <div className="space-y-1">
                   <textarea
@@ -586,7 +568,7 @@ export function HomeworkEditor({
                     rows={2}
                     placeholder="Description (emoji allowed)"
                   />
-                  <EmojiInsert onInsert={(e) => setEditing((prev) => prev ? { ...prev, description: (prev.description ?? "") + e } : null)} />
+                  <EmojiPicker onInsert={(e) => setEditing((prev) => prev ? { ...prev, description: (prev.description ?? "") + e } : null)} />
                 </div>
                 <div className="space-y-1">
                   <input

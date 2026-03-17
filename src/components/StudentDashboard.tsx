@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ScheduleViewer } from "./ScheduleViewer";
 import { WordleTab } from "./WordleTab";
+import { EmojiPicker } from "./EmojiPicker";
 
 type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
 type HomeworkResponse = {
@@ -186,6 +187,7 @@ function HomeworkSubmit({
         disabled={submitting}
       />
       <div className="mt-2 flex flex-wrap gap-2 items-center">
+        <EmojiPicker onInsert={(e) => setResponse((prev) => prev + e)} />
         <input
           ref={fileInputRef}
           type="file"
