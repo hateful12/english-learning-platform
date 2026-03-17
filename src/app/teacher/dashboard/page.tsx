@@ -15,13 +15,13 @@ export default async function TeacherDashboardPage() {
       <header
         className="sticky top-0 z-10 border-b border-white/10 overflow-hidden"
         style={{
-          backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 60%), url(/london-skyline-bg.png)",
-          backgroundSize: "cover",
+          backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 50%), url(/london-skyline-bg.png)",
+          backgroundSize: "100% auto",
           backgroundPosition: "center bottom",
           backgroundRepeat: "no-repeat",
         }}
       >
-        <div className="flex items-center justify-between px-6 py-4 md:px-8 relative z-10 min-h-[160px] text-white">
+        <div className="flex items-center justify-between px-6 py-4 md:px-8 relative z-10 min-h-[220px] text-white">
           <div className="flex items-center gap-3">
             <Logo />
             <span className="hidden sm:inline-flex items-center rounded-full border border-white/40 bg-white/10 px-2.5 py-0.5 text-xs font-semibold text-white tracking-wide uppercase">
