@@ -15,8 +15,12 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "English with Teacher — Homework & Lessons",
-  description: "Your platform for homework, lesson links, Miro boards, and payment info.",
+  title: "senira.english — Learn English with Senira",
+  description: "Your platform for homework, lessons, and payment info.",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({

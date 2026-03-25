@@ -9,7 +9,7 @@ export async function GET() {
   }
   const student = await prisma.student.findUnique({
     where: { id: studentId },
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, level: true },
   });
   if (!student) {
     return NextResponse.json({ loggedIn: false, student: null });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isTeacherLoggedIn } from "@/lib/auth";
+import { isTeacherLoggedIn, getStudentId } from "@/lib/auth";
 import path from "path";
 import fs from "fs/promises";
 import { randomBytes } from "crypto";
@@ -7,7 +7,7 @@ import { randomBytes } from "crypto";
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "homework");
 
 const ALLOWED_TYPES = {
-  image: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"],
+  image: ["image/jpeg", "image/png", "image/gif", "image/webp"],
   audio: ["audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg", "audio/webm", "audio/mp4", "audio/x-m4a"],
   archive: [
     "application/zip",
@@ -16,20 +16,23 @@ const ALLOWED_TYPES = {
     "application/vnd.rar",
     "application/x-7z-compressed",
     "application/gzip",
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ],
 };
 
 function getAllowedExtensions(): Set<string> {
   const exts = new Set<string>();
-  // map common extensions for validation
-  ["jpg", "jpeg", "png", "gif", "webp", "svg", "mp3", "wav", "ogg", "webm", "m4a", "zip", "rar", "7z", "gz"].forEach((e) => exts.add(e.toLowerCase()));
+  ["jpg", "jpeg", "png", "gif", "webp", "mp3", "wav", "ogg", "webm", "m4a", "zip", "rar", "7z", "gz", "pdf", "doc", "docx"].forEach((e) => exts.add(e.toLowerCase()));
   return exts;
 }
 
 const EXT_TO_CATEGORY: Record<string, "image" | "audio" | "archive"> = {
-  jpg: "image", jpeg: "image", png: "image", gif: "image", webp: "image", svg: "image",
+  jpg: "image", jpeg: "image", png: "image", gif: "image", webp: "image",
   mp3: "audio", wav: "audio", ogg: "audio", webm: "audio", m4a: "audio",
   zip: "archive", rar: "archive", "7z": "archive", gz: "archive",
+  pdf: "archive", doc: "archive", docx: "archive",
 };
 
 function getCategory(mime: string, ext: string): "image" | "audio" | "archive" | null {
@@ -49,8 +52,9 @@ function safeName(original: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const loggedIn = await isTeacherLoggedIn();
-  if (!loggedIn) {
+  const teacher = await isTeacherLoggedIn();
+  const studentId = await getStudentId();
+  if (!teacher && !studentId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -76,7 +80,7 @@ export async function POST(request: NextRequest) {
   const category = getCategory(mime, ext);
   if (!category) {
     return NextResponse.json(
-      { error: "File type not allowed. Use photo, audio, or archive (zip, rar, 7z)." },
+      { error: "File type not allowed. Use photo, audio, archive (zip, rar, 7z), or document (pdf, doc, docx)." },
       { status: 400 }
     );
   }

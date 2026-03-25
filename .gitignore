@@ -7,6 +7,9 @@
 # testing
 /coverage
 
+# playwright (separate repo: github.com/hateful12/playwright-automation)
+/playwright-automation
+
 # next.js
 /.next/
 /out/
