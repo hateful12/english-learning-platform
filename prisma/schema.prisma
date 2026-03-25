@@ -186,6 +186,7 @@ model Assessment {
   student     Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
   status      String               @default("pending") // "pending" | "completed"
   level       String?              // "A1" "A2" "B1" "B2" "C1" "C2"
+  skill       String?              // "reading" | "writing" | "listening" | "speaking"
   score       Int?                 // 0-100
   feedback    String?
   questions   AssessmentQuestion[]
@@ -198,8 +199,9 @@ model AssessmentQuestion {
   assessmentId  String
   assessment    Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   order         Int
+  questionType  String     @default("mcq") // "mcq" | "open"
   question      String
-  options       String     // JSON array of 4 answer options
-  correctAnswer String
+  options       String     // JSON array of 4 answer options (empty for open)
+  correctAnswer String     // for mcq: exact option text; for open: often empty
   studentAnswer String?
 }

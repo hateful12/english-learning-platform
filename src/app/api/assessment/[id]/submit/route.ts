@@ -5,19 +5,51 @@ import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
 
-function buildEvaluatePrompt(level: string): string {
-  return `You are an English language progress-test expert.
-A student whose teacher-assigned level is ${level} has just completed a progress test.
-The test had 25 questions: some slightly below ${level}, most at ${level}, and a few slightly above.
+function buildEvaluatePrompt(params: {
+  level: string;
+  skill: string | null;
+  hasOpen: boolean;
+  hasMcq: boolean;
+}): string {
+  const { level, skill, hasOpen, hasMcq } = params;
+  const skillPhrase = skill
+    ? `This was a **${skill}** skills check at CEFR ${level}.`
+    : `The student's teacher-assigned level is ${level}.`;
 
-Evaluate their answers and return:
-1. A score from 0 to 100 based on what percentage they answered correctly
-2. A short, encouraging feedback paragraph (2-3 sentences) that mentions their performance at the ${level} level specifically, highlights what they're doing well, and suggests one concrete area to focus on next
+  if (hasOpen && !hasMcq) {
+    return `You are an English language progress-test expert. ${skillPhrase}
+
+The student completed open-ended ${skill ?? "production"} tasks. Rate their written responses for appropriateness, range, accuracy, and task achievement at the ${level} level.
 
 Return ONLY valid JSON — no markdown, no extra text:
 {
-  "score": 72,
-  "feedback": "Your feedback here."
+  "score": <integer 0-100>,
+  "feedback": "<2-4 sentences: encouraging, specific to their ${skill ?? "English"} performance at ${level}, one clear next step>"
+}`;
+  }
+
+  if (hasMcq && !hasOpen) {
+    return `You are an English language progress-test expert. ${skillPhrase}
+
+The student completed multiple-choice questions. The user message JSON includes each item with isCorrect (already computed). Use it only to inform your feedback — do NOT change the scoring logic: your "score" field MUST equal Math.round(100 * (count of isCorrect true) / (total items)).
+
+Return ONLY valid JSON — no markdown, no extra text:
+{
+  "score": <integer 0-100, must match the rule above>,
+  "feedback": "<2-3 sentences: mention ${skill ?? "this skill"} at ${level}, strengths, one area to improve>"
+}`;
+  }
+
+  return `You are an English language progress-test expert. ${skillPhrase}
+
+The test mixed multiple-choice and open-ended responses. JSON includes isCorrect for MCQ items and student text for open items.
+
+Compute an overall score 0-100: weight MCQ as 50% (by percent correct) and open tasks as 50% (your holistic judgment of task achievement at ${level}). If only one type is present, use that type only.
+
+Return ONLY valid JSON — no markdown, no extra text:
+{
+  "score": <integer 0-100>,
+  "feedback": "<2-4 sentences, balanced and actionable>"
 }`;
 }
 
@@ -58,6 +90,7 @@ export async function POST(
     if (assessment.status === "completed") {
       return NextResponse.json({
         level: assessment.level,
+        skill: assessment.skill,
         score: assessment.score,
         feedback: assessment.feedback,
         completedAt: assessment.completedAt,
@@ -80,7 +113,6 @@ export async function POST(
       (answers as AnswerPayload[]).map((a) => [a.questionId, a.answer])
     );
 
-    // Save student answers
     await Promise.all(
       assessment.questions.map((q) =>
         prisma.assessmentQuestion.update({
@@ -90,25 +122,66 @@ export async function POST(
       )
     );
 
-    // The level is already stored on the assessment (set when the test was created)
-    const studentLevel = assessment.level ?? "B1";
+    const openQuestions = assessment.questions.filter((q) => (q.questionType ?? "mcq") === "open");
+    if (openQuestions.length > 0) {
+      const tooShort = openQuestions.filter((q) => {
+        const t = (answerMap.get(q.id) ?? "").trim();
+        return t.length < 15;
+      });
+      if (tooShort.length > 0) {
+        return NextResponse.json(
+          { error: "Please write at least a sentence or two for each writing/speaking task (15+ characters each)." },
+          { status: 400 }
+        );
+      }
+    }
 
-    // Build evaluation input — correct / wrong per question
-    const evaluationInput = assessment.questions.map((q) => ({
-      question: q.question,
-      correctAnswer: q.correctAnswer,
-      studentAnswer: answerMap.get(q.id) ?? null,
-      isCorrect: (answerMap.get(q.id) ?? null) === q.correctAnswer,
-    }));
+    const studentLevel = assessment.level ?? "B1";
+    const skill = assessment.skill;
+
+    const evaluationInput = assessment.questions.map((q) => {
+      const qt = q.questionType === "open" ? "open" : "mcq";
+      const studentAns = answerMap.get(q.id) ?? null;
+      if (qt === "mcq") {
+        const ok = studentAns !== null && studentAns !== "" && studentAns === q.correctAnswer;
+        return {
+          type: "mcq" as const,
+          question: q.question,
+          studentAnswer: studentAns,
+          correctAnswer: q.correctAnswer,
+          isCorrect: ok,
+        };
+      }
+      const trimmed = (studentAns ?? "").trim();
+      return {
+        type: "open" as const,
+        question: q.question,
+        studentAnswer: trimmed.length ? trimmed : null,
+      };
+    });
+
+    const hasOpen = evaluationInput.some((x) => x.type === "open");
+    const hasMcq = evaluationInput.some((x) => x.type === "mcq");
+    const mcqItems = evaluationInput.filter((x): x is Extract<(typeof evaluationInput)[0], { type: "mcq" }> => x.type === "mcq");
+    const mcqCorrect = mcqItems.filter((x) => x.isCorrect).length;
+    const mcqScorePct = mcqItems.length ? Math.round((mcqCorrect / mcqItems.length) * 100) : 0;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
-        { role: "system", content: buildEvaluatePrompt(studentLevel) },
-        { role: "user", content: JSON.stringify(evaluationInput) },
+        { role: "system", content: buildEvaluatePrompt({ level: studentLevel, skill, hasOpen, hasMcq }) },
+        {
+          role: "user",
+          content: JSON.stringify({
+            mcqStats: hasMcq
+              ? { total: mcqItems.length, correct: mcqCorrect, percentCorrect: mcqScorePct }
+              : null,
+            items: evaluationInput,
+          }),
+        },
       ],
       temperature: 0.3,
-      max_tokens: 400,
+      max_tokens: 500,
     });
 
     const rawContent = completion.choices[0]?.message?.content ?? "{}";
@@ -121,17 +194,23 @@ export async function POST(
       return NextResponse.json({ error: "Failed to evaluate answers. Please try again." }, { status: 502 });
     }
 
-    if (typeof result.score !== "number") {
-      // Fallback: calculate score from correct answers
-      const correct = evaluationInput.filter((q) => q.isCorrect).length;
-      result.score = Math.round((correct / evaluationInput.length) * 100);
+    let finalScore = typeof result.score === "number" ? Math.round(result.score) : 0;
+
+    if (hasMcq && !hasOpen) {
+      finalScore = mcqScorePct;
+    } else if (!hasMcq && hasOpen) {
+      if (typeof result.score !== "number" || Number.isNaN(result.score)) {
+        finalScore = 0;
+      }
     }
+
+    finalScore = Math.min(100, Math.max(0, finalScore));
 
     const updated = await prisma.assessment.update({
       where: { id: assessmentId },
       data: {
         status: "completed",
-        score: Math.min(100, Math.max(0, Math.round(result.score))),
+        score: finalScore,
         feedback: result.feedback ?? "",
         completedAt: new Date(),
       },
@@ -139,6 +218,7 @@ export async function POST(
 
     return NextResponse.json({
       level: updated.level,
+      skill: updated.skill,
       score: updated.score,
       feedback: updated.feedback,
       completedAt: updated.completedAt,

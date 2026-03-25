@@ -42,6 +42,7 @@ export async function GET() {
         id: true,
         status: true,
         level: true,
+        skill: true,
         score: true,
         feedback: true,
         createdAt: true,

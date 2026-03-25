@@ -1,40 +1,88 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getStudentId } from "@/lib/auth";
 import OpenAI from "openai";
+import { isAssessmentSkill } from "@/lib/assessment-skills";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
 
-function buildPrompt(level: string): string {
-  // One level below and one above for context, most questions at the target level
-  return `You are an English language progress-test expert. Generate exactly 25 multiple-choice questions to help a ${level} level English student check their progress.
+function buildMcqPrompt(skill: "reading" | "listening", level: string): string {
+  const skillLabel = skill === "reading" ? "reading comprehension" : "listening comprehension";
+  const listeningNote =
+    skill === "listening"
+      ? `Each question MUST include a short script (2–5 sentences) that simulates something the student would *hear* (dialogue or monologue). Start the question text with a line like "Listen to this:" then the script, then the comprehension question.`
+      : `Use 2 short reading passages (about 4–6 sentences each). The first passage should have 4–5 questions, the second passage 4–5 questions. Each question must clearly refer to its passage.`;
 
-Question distribution (IMPORTANT — follow exactly):
-- 5 questions slightly below ${level} (consolidation — the student should mostly get these right)
-- 15 questions squarely at ${level} level
-- 5 questions slightly above ${level} (stretch — to show what's next)
+  return `You are an English language assessment expert. Generate exactly 10 multiple-choice ${skillLabel} questions for a student at CEFR level ${level}.
 
-Cover these areas proportionally:
-- Vocabulary (8 questions)
-- Grammar (9 questions)
-- Reading comprehension micro-tasks (4 questions)
-- Phrasal verbs / idioms (4 questions)
+${listeningNote}
 
-Return ONLY a valid JSON array with exactly 25 objects. No markdown, no extra text. Each object must have:
+Difficulty mix (follow exactly):
+- 2 questions slightly below ${level} (consolidation)
+- 6 questions squarely at ${level}
+- 2 questions slightly above ${level} (stretch)
+
+Return ONLY a valid JSON array with exactly 10 objects. No markdown, no extra text. Each object must have:
 {
-  "question": "The full question text",
+  "type": "mcq",
+  "question": "The full question text (include passage/script in the question as needed)",
   "options": ["option A text", "option B text", "option C text", "option D text"],
   "correctAnswer": "the full text of the correct option (must match exactly one of the options)"
 }`;
 }
 
-interface RawQuestion {
+function buildOpenPrompt(skill: "writing" | "speaking", level: string): string {
+  const focus =
+    skill === "writing"
+      ? `Tasks should cover different writing purposes at ${level}: for example a short email or message, a brief opinion or argument (80–120 words suggested), and describing or summarising a situation.`
+      : `Prompts should be realistic spoken scenarios at ${level}: for example giving directions, agreeing/disagreeing politely, making a request, or handling a simple service situation. Ask the student to type what they would *say* aloud (not essay-style).`;
+
+  return `You are an English language assessment expert. Generate exactly 3 open-ended ${skill} tasks for a CEFR ${level} student.
+
+${focus}
+
+Difficulty mix across the 3 tasks: one slightly below ${level}, one at ${level}, one slightly above ${level}.
+
+Return ONLY a valid JSON array with exactly 3 objects. No markdown, no extra text. Each object must have:
+{
+  "type": "open",
+  "question": "The full task instructions for the student"
+}`;
+}
+
+interface RawMcq {
+  type: "mcq";
   question: string;
   options: string[];
   correctAnswer: string;
 }
 
-export async function POST() {
+interface RawOpen {
+  type: "open";
+  question: string;
+}
+
+function normalizeMcq(raw: unknown): RawMcq | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (o.type === "open") return null;
+  const q = typeof o.question === "string" ? o.question : "";
+  const options = Array.isArray(o.options) ? o.options.filter((x): x is string => typeof x === "string") : [];
+  const correctAnswer = typeof o.correctAnswer === "string" ? o.correctAnswer : "";
+  if (q.length < 5 || options.length !== 4 || !correctAnswer) return null;
+  if (!options.includes(correctAnswer)) return null;
+  return { type: "mcq", question: q, options, correctAnswer };
+}
+
+function normalizeOpen(raw: unknown): RawOpen | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const q = typeof o.question === "string" ? o.question : "";
+  if (q.length < 10) return null;
+  return { type: "open", question: q };
+}
+
+export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.OPENAI_API_KEY?.trim();
     if (!apiKey) {
@@ -48,7 +96,22 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get student with their assigned level
+    let skillRaw: string | undefined;
+    try {
+      const body = await request.json().catch(() => ({}));
+      skillRaw = typeof (body as { skill?: unknown })?.skill === "string" ? (body as { skill: string }).skill : undefined;
+    } catch {
+      skillRaw = undefined;
+    }
+
+    if (!skillRaw || !isAssessmentSkill(skillRaw)) {
+      return NextResponse.json(
+        { error: "Choose a skill: reading, writing, listening, or speaking." },
+        { status: 400 }
+      );
+    }
+    const skill = skillRaw;
+
     const student = await prisma.student.findUnique({
       where: { id: studentId },
       select: { level: true },
@@ -63,9 +126,15 @@ export async function POST() {
 
     const studentLevel = student.level;
 
-    // Resume existing pending assessment for this level
-    const pending = await prisma.assessment.findFirst({
+    const pendingOther = await prisma.assessment.findFirst({
       where: { studentId, status: "pending" },
+    });
+    if (pendingOther && pendingOther.skill !== skill) {
+      await prisma.assessment.delete({ where: { id: pendingOther.id } });
+    }
+
+    const pending = await prisma.assessment.findFirst({
+      where: { studentId, status: "pending", skill },
       include: { questions: { orderBy: { order: "asc" } } },
     });
 
@@ -73,9 +142,11 @@ export async function POST() {
       return NextResponse.json({
         assessmentId: pending.id,
         studentLevel,
+        skill,
         questions: pending.questions.map((q) => ({
           id: q.id,
           order: q.order,
+          questionType: q.questionType as "mcq" | "open",
           question: q.question,
           options: JSON.parse(q.options) as string[],
           studentAnswer: q.studentAnswer,
@@ -83,38 +154,76 @@ export async function POST() {
       });
     }
 
-    // Generate questions tailored to the student's level
+    const userPrompt =
+      skill === "reading" || skill === "listening"
+        ? buildMcqPrompt(skill, studentLevel)
+        : buildOpenPrompt(skill, studentLevel);
+
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages: [{ role: "user", content: buildPrompt(studentLevel) }],
+      messages: [{ role: "user", content: userPrompt }],
       temperature: 0.7,
-      max_tokens: 4000,
+      max_tokens: skill === "reading" || skill === "listening" ? 4500 : 2500,
     });
 
     const rawContent = completion.choices[0]?.message?.content ?? "[]";
     const raw = rawContent.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-    let parsed: RawQuestion[];
+    let parsed: unknown[];
     try {
-      parsed = JSON.parse(raw) as RawQuestion[];
+      const j = JSON.parse(raw) as unknown;
+      parsed = Array.isArray(j) ? j : [];
     } catch {
       console.error("OpenAI returned invalid JSON:", rawContent);
       return NextResponse.json({ error: "Failed to generate questions. Please try again." }, { status: 502 });
     }
 
-    if (!Array.isArray(parsed) || parsed.length < 20) {
+    const mcqExpected = skill === "reading" || skill === "listening";
+    const minLen = mcqExpected ? 8 : 3;
+
+    const normalized: { questionType: "mcq" | "open"; question: string; options: string[]; correctAnswer: string }[] =
+      [];
+
+    for (const item of parsed) {
+      if (normalized.length >= (mcqExpected ? 10 : 3)) break;
+      if (mcqExpected) {
+        const m = normalizeMcq(item);
+        if (m) {
+          normalized.push({
+            questionType: "mcq",
+            question: m.question,
+            options: m.options,
+            correctAnswer: m.correctAnswer,
+          });
+        }
+      } else {
+        const op = normalizeOpen(item);
+        if (op) {
+          normalized.push({
+            questionType: "open",
+            question: op.question,
+            options: [],
+            correctAnswer: "",
+          });
+        }
+      }
+    }
+
+    if (normalized.length < minLen) {
       return NextResponse.json({ error: "Generated questions are invalid. Please try again." }, { status: 502 });
     }
 
-    const questions = parsed.slice(0, 25);
+    const questions = mcqExpected ? normalized.slice(0, 10) : normalized.slice(0, 3);
 
     const assessment = await prisma.assessment.create({
       data: {
         studentId,
         status: "pending",
         level: studentLevel,
+        skill,
         questions: {
           create: questions.map((q, i) => ({
             order: i + 1,
+            questionType: q.questionType,
             question: q.question,
             options: JSON.stringify(q.options),
             correctAnswer: q.correctAnswer,
@@ -127,9 +236,11 @@ export async function POST() {
     return NextResponse.json({
       assessmentId: assessment.id,
       studentLevel,
+      skill,
       questions: assessment.questions.map((q) => ({
         id: q.id,
         order: q.order,
+        questionType: q.questionType as "mcq" | "open",
         question: q.question,
         options: JSON.parse(q.options) as string[],
         studentAnswer: null,

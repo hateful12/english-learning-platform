@@ -4,6 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { ScheduleViewer } from "./ScheduleViewer";
 import { WordleTab } from "./WordleTab";
 import { EmojiPicker } from "./EmojiPicker";
+import {
+  ASSESSMENT_SKILLS,
+  isAssessmentSkill,
+  SKILL_BLURBS,
+  SKILL_ICONS,
+  SKILL_LABELS,
+  type AssessmentSkill,
+} from "@/lib/assessment-skills";
 
 type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
 type HomeworkResponse = {
@@ -42,6 +50,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 type AssessmentQuestion = {
   id: string;
   order: number;
+  questionType?: "mcq" | "open";
   question: string;
   options: string[];
   studentAnswer: string | null;
@@ -49,6 +58,7 @@ type AssessmentQuestion = {
 
 type AssessmentResult = {
   level: string;
+  skill?: string | null;
   score: number;
   feedback: string;
   completedAt: string;
@@ -58,6 +68,7 @@ type AssessmentSummary = {
   id: string;
   status: string;
   level: string | null;
+  skill?: string | null;
   score: number | null;
   feedback: string | null;
   createdAt: string;
@@ -657,14 +668,25 @@ function LevelBadge({ level, large }: { level: string; large?: boolean }) {
   );
 }
 
+function formatSkillLabel(skill: string | null | undefined): string | null {
+  if (!skill) return null;
+  if ((ASSESSMENT_SKILLS as readonly string[]).includes(skill)) {
+    return SKILL_LABELS[skill as AssessmentSkill];
+  }
+  return skill;
+}
+
 function HistoryList({ history }: { history: AssessmentSummary[] }) {
   return (
     <ul className="mt-3 space-y-2 rounded-lg border border-ink/5 bg-ink/[0.02] p-4">
       {history.map((a) => (
         <li key={a.id} className="flex items-center justify-between gap-3 border-b border-ink/5 pb-2 last:border-0 last:pb-0">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {a.level && <LevelBadge level={a.level} />}
-            <span className="text-sm text-ink/60">{a.score}% correct</span>
+            {formatSkillLabel(a.skill) && (
+              <span className="text-xs font-medium text-ink/50">{formatSkillLabel(a.skill)}</span>
+            )}
+            <span className="text-sm text-ink/60">{a.score}%</span>
           </div>
           <span className="text-xs text-ink/40">
             {a.completedAt ? new Date(a.completedAt).toLocaleDateString() : ""}
@@ -679,6 +701,7 @@ function TestView({
   questions,
   answers,
   currentQ,
+  activeSkill,
   onSelectAnswer,
   onNext,
   onPrev,
@@ -689,6 +712,7 @@ function TestView({
   questions: AssessmentQuestion[];
   answers: Record<string, string>;
   currentQ: number;
+  activeSkill: AssessmentSkill | null;
   onSelectAnswer: (id: string, answer: string) => void;
   onNext: () => void;
   onPrev: () => void;
@@ -697,7 +721,13 @@ function TestView({
   error: string | null;
 }) {
   const q = questions[currentQ];
-  const answeredCount = questions.filter((q) => answers[q.id]).length;
+  const qType = q.questionType ?? "mcq";
+  const isAnswered = (item: AssessmentQuestion) => {
+    const v = answers[item.id] ?? "";
+    if ((item.questionType ?? "mcq") === "open") return v.trim().length >= 15;
+    return Boolean(v);
+  };
+  const answeredCount = questions.filter((item) => isAnswered(item)).length;
   const isLast = currentQ === questions.length - 1;
   const allAnswered = answeredCount === questions.length;
 
@@ -721,30 +751,54 @@ function TestView({
 
       {/* Question card */}
       <div className="rounded-xl border border-ink/10 bg-white p-6 space-y-5 shadow-sm">
-        <p className="text-base font-medium text-ink leading-relaxed">{q.question}</p>
-        <div className="space-y-2.5">
-          {q.options.map((opt, i) => {
-            const selected = answers[q.id] === opt;
-            return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => onSelectAnswer(q.id, opt)}
-                className={[
-                  "w-full text-left rounded-lg border px-4 py-3 text-sm transition-all",
-                  selected
-                    ? "border-accent bg-accent/10 text-accent font-medium"
-                    : "border-ink/10 bg-ink/[0.01] text-ink/80 hover:border-accent/40 hover:bg-accent/5",
-                ].join(" ")}
-              >
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-current/30 text-xs font-bold mr-3 shrink-0">
-                  {["A", "B", "C", "D"][i]}
-                </span>
-                {opt}
-              </button>
-            );
-          })}
-        </div>
+        {qType === "open" && (
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent/80">
+            {activeSkill === "speaking" ? "Speaking (type what you would say)" : activeSkill === "writing" ? "Writing" : "Your response"}
+          </p>
+        )}
+        <p className="text-base font-medium text-ink leading-relaxed whitespace-pre-wrap">{q.question}</p>
+        {qType === "mcq" ? (
+          <div className="space-y-2.5">
+            {q.options.map((opt, i) => {
+              const selected = answers[q.id] === opt;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => onSelectAnswer(q.id, opt)}
+                  className={[
+                    "w-full text-left rounded-lg border px-4 py-3 text-sm transition-all",
+                    selected
+                      ? "border-accent bg-accent/10 text-accent font-medium"
+                      : "border-ink/10 bg-ink/[0.01] text-ink/80 hover:border-accent/40 hover:bg-accent/5",
+                  ].join(" ")}
+                >
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-current/30 text-xs font-bold mr-3 shrink-0">
+                    {["A", "B", "C", "D"][i]}
+                  </span>
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-medium text-ink/70 mb-2">Your answer</label>
+            <textarea
+              value={answers[q.id] ?? ""}
+              onChange={(e) => onSelectAnswer(q.id, e.target.value)}
+              placeholder="Write at least a sentence or two (minimum 15 characters)."
+              rows={6}
+              className="input w-full min-h-[140px] resize-y text-sm"
+            />
+            <p className="mt-1.5 text-xs text-ink/40">
+              {(answers[q.id] ?? "").trim().length} characters
+              {(answers[q.id] ?? "").trim().length > 0 && (answers[q.id] ?? "").trim().length < 15
+                ? " — add a bit more before you submit."
+                : ""}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Question dot navigation */}
@@ -758,7 +812,7 @@ function TestView({
               "h-6 w-6 rounded-full text-[10px] font-bold border transition-all",
               i === currentQ
                 ? "bg-accent text-white border-accent"
-                : answers[q.id]
+                : isAnswered(q)
                   ? "bg-accent/20 text-accent border-accent/30"
                   : "bg-ink/5 text-ink/40 border-ink/10 hover:border-ink/20",
             ].join(" ")}
@@ -832,13 +886,24 @@ function ResultsView({
 }) {
   const completedHistory = history.filter((a) => a.status === "completed");
   const level = assignedLevel ?? result.level;
+  const skillTitle = formatSkillLabel(result.skill ?? undefined);
   return (
     <div className="space-y-5">
       {/* Result card */}
       <div className="rounded-xl border border-ink/10 bg-white p-6 shadow-sm space-y-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-ink">Progress Test Result</h2>
-          <span className="text-xs text-ink/40">{new Date(result.completedAt).toLocaleDateString()}</span>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Progress Test Result</h2>
+            {skillTitle && (
+              <p className="text-sm text-ink/55 mt-0.5">
+                {result.skill && (ASSESSMENT_SKILLS as readonly string[]).includes(result.skill)
+                  ? SKILL_ICONS[result.skill as AssessmentSkill]
+                  : "🎯"}{" "}
+                {skillTitle}
+              </p>
+            )}
+          </div>
+          <span className="text-xs text-ink/40 shrink-0">{new Date(result.completedAt).toLocaleDateString()}</span>
         </div>
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
           <div className="flex flex-col items-center gap-2">
@@ -891,6 +956,28 @@ function ResultsView({
   );
 }
 
+function CopyablePrompt({ label, text }: { label: string; text: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert("Could not copy. Try selecting the text manually.");
+    }
+  }
+  return (
+    <div className="rounded-lg border border-ink/10 bg-white p-3 space-y-2">
+      <p className="text-xs text-ink/50 font-medium uppercase tracking-wide">{label}</p>
+      <p className="text-sm text-ink/75 whitespace-pre-wrap leading-relaxed">{text}</p>
+      <button type="button" onClick={copy} className="text-sm font-medium text-accent hover:underline">
+        {copied ? "Copied!" : "Copy prompt"}
+      </button>
+    </div>
+  );
+}
+
 function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | undefined }) {
   const [phase, setPhase] = useState<"idle" | "loading" | "testing" | "evaluating" | "results">("idle");
   const [history, setHistory] = useState<AssessmentSummary[]>([]);
@@ -902,6 +989,7 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
   const [currentQ, setCurrentQ] = useState(0);
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [skillInProgress, setSkillInProgress] = useState<AssessmentSkill | null>(null);
 
   async function safeJson(res: Response) {
     const text = await res.text();
@@ -919,6 +1007,7 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
         if (latest?.status === "completed") {
           setResult({
             level: latest.level ?? "",
+            skill: latest.skill ?? null,
             score: latest.score ?? 0,
             feedback: latest.feedback ?? "",
             completedAt: latest.completedAt ?? latest.createdAt,
@@ -930,11 +1019,16 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
       .catch(() => setHistoryLoading(false));
   }, []);
 
-  async function startTest() {
+  async function startTest(skill: AssessmentSkill) {
     setError(null);
+    setSkillInProgress(skill);
     setPhase("loading");
     try {
-      const res = await fetch("/api/assessment/start", { method: "POST" });
+      const res = await fetch("/api/assessment/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skill }),
+      });
       const data = await safeJson(res);
       if (!res.ok) throw new Error((data as { error?: string })?.error ?? "Failed to start test");
       const { assessmentId: id, questions: qs } = data as { assessmentId: string; questions: AssessmentQuestion[] };
@@ -945,11 +1039,16 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
         if (q.studentAnswer) pre[q.id] = q.studentAnswer;
       }
       setAnswers(pre);
-      const firstUnanswered = qs.findIndex((q) => !pre[q.id]);
+      const firstUnanswered = qs.findIndex((q) => {
+        const v = pre[q.id];
+        if ((q.questionType ?? "mcq") === "open") return !(v && v.trim().length >= 15);
+        return !v;
+      });
       setCurrentQ(firstUnanswered >= 0 ? firstUnanswered : 0);
       setPhase("testing");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
+      setSkillInProgress(null);
       setPhase("idle");
     }
   }
@@ -986,6 +1085,7 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
     setCurrentQ(0);
     setResult(null);
     setError(null);
+    setSkillInProgress(null);
   }
 
   if (historyLoading) {
@@ -997,20 +1097,26 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
   }
 
   if (phase === "loading") {
+    const sk = skillInProgress ? SKILL_LABELS[skillInProgress] : "skill";
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4">
         <div className="h-12 w-12 rounded-full border-4 border-accent/20 border-t-accent animate-spin" />
-        <p className="text-sm text-ink/60">Generating your {assignedLevel} progress test…</p>
+        <p className="text-sm text-ink/60">
+          Generating your {assignedLevel} {sk} test…
+        </p>
         <p className="text-xs text-ink/40">This may take a few seconds</p>
       </div>
     );
   }
 
   if (phase === "evaluating") {
+    const sk = skillInProgress ? SKILL_LABELS[skillInProgress] : "";
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4">
         <div className="h-12 w-12 rounded-full border-4 border-accent/20 border-t-accent animate-spin" />
-        <p className="text-sm text-ink/60">ChatGPT is evaluating your answers…</p>
+        <p className="text-sm text-ink/60">
+          ChatGPT is evaluating your {sk ? `${sk.toLowerCase()} ` : ""}answers…
+        </p>
       </div>
     );
   }
@@ -1034,6 +1140,7 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
         questions={questions}
         answers={answers}
         currentQ={currentQ}
+        activeSkill={skillInProgress}
         onSelectAnswer={(id, ans) => setAnswers((prev) => ({ ...prev, [id]: ans }))}
         onNext={() => setCurrentQ((q) => Math.min(q + 1, questions.length - 1))}
         onPrev={() => setCurrentQ((q) => Math.max(q - 1, 0))}
@@ -1044,10 +1151,18 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
     );
   }
 
-  // Idle — start / retake
+  // Idle — skill choice
   const latestCompleted = history.find((a) => a.status === "completed");
-  const hasPending = history.find((a) => a.status === "pending");
+  const pendingRow = history.find((a) => a.status === "pending");
+  const pendingSkill =
+    pendingRow?.skill && isAssessmentSkill(pendingRow.skill) ? pendingRow.skill : null;
   const completedHistory = history.filter((a) => a.status === "completed");
+
+  const promptSkillBySkill = `Hi ChatGPT, I'd like to test my English skills one by one. My teacher has placed me at about CEFR level ${assignedLevel}. Please adapt everything to that level.
+
+Please start with a short reading passage and ask me some comprehension questions. Then we can move on to writing, listening (you can also use a short YouTube clip I paste), and speaking.`;
+
+  const promptJournal = `Hi ChatGPT, can you help me track my English learning progress? Let's start a journal. Please ask me every week what I studied, what I found easy or hard, and help me improve step by step.`;
 
   // No level assigned by teacher yet
   if (!assignedLevel) {
@@ -1056,7 +1171,7 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
         <span className="text-4xl">🎓</span>
         <p className="font-medium text-ink">No level assigned yet</p>
         <p className="text-sm text-ink/50 max-w-xs">
-          Your teacher needs to set your English level (A1–C2) in the Students tab before you can take the progress test.
+          Your teacher needs to set your English level (A1–C2) in the Students tab before you can take skill-based progress tests.
         </p>
       </div>
     );
@@ -1065,44 +1180,101 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
   return (
     <div className="space-y-6">
       {/* Assigned level banner */}
-      <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-4 flex items-center gap-4">
-        <LevelBadge level={assignedLevel} large />
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink/40">Your level</p>
-          <p className="text-sm text-ink/60">This test is tailored to your {assignedLevel} level</p>
+      <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="flex items-center gap-4">
+          <LevelBadge level={assignedLevel} large />
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink/40">Your level</p>
+            <p className="text-sm text-ink/60">All skills below are calibrated to {assignedLevel}</p>
+          </div>
         </div>
         {latestCompleted && (
-          <div className="ml-auto text-right">
-            <p className="text-xs text-ink/40">Last score</p>
+          <div className="sm:ml-auto text-left sm:text-right">
+            <p className="text-xs text-ink/40">Latest completed score</p>
             <p className="text-lg font-bold text-accent">{latestCompleted.score}%</p>
             <p className="text-xs text-ink/30">{new Date(latestCompleted.completedAt!).toLocaleDateString()}</p>
           </div>
         )}
       </div>
 
+      {pendingSkill && (
+        <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-sm text-ink/75">
+            You have an in-progress <strong>{SKILL_LABELS[pendingSkill]}</strong> test. Resume to continue, or start a
+            different skill (that will discard the unfinished test).
+          </p>
+          <button type="button" onClick={() => startTest(pendingSkill)} className="btn-primary shrink-0">
+            Resume {SKILL_LABELS[pendingSkill]}
+          </button>
+        </div>
+      )}
+
+      {/* Step 1 — skill-based tests */}
       <div className="rounded-xl border border-ink/10 p-6 space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-ink">
-            {latestCompleted ? "Retake the Progress Test" : "Start Your Progress Test"}
-          </h2>
-          <p className="mt-1 text-sm text-ink/60">
-            25 questions focused on your <strong>{assignedLevel}</strong> level — vocabulary, grammar, and reading comprehension.
-            ChatGPT evaluates your answers and gives personalised feedback.
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent/90">Step 1</p>
+          <h2 className="text-lg font-semibold text-ink mt-1">Skill-based progress checks</h2>
+          <p className="mt-2 text-sm text-ink/60 leading-relaxed">
+            English proficiency is built from <strong>reading</strong>, <strong>writing</strong>, <strong>listening</strong>
+            , and <strong>speaking</strong>. Test each skill separately to see strengths and gaps. Every task is written for
+            your <strong>{assignedLevel}</strong> level (with a gentle mix of slightly easier and slightly harder items).
           </p>
-          <ul className="mt-3 space-y-1 text-sm text-ink/60">
-            <li>📝 25 questions tailored to {assignedLevel}</li>
-            <li>⏱ Takes about 10–15 minutes</li>
-            <li>🤖 AI-powered feedback by ChatGPT</li>
-          </ul>
         </div>
         {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
-            {error}
-          </div>
+          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">{error}</div>
         )}
-        <button type="button" onClick={startTest} className="btn-primary">
-          {hasPending ? "Resume Test" : latestCompleted ? "Retake Test" : "Start Test"}
-        </button>
+        <div className="grid sm:grid-cols-2 gap-4">
+          {ASSESSMENT_SKILLS.map((skill) => (
+            <div
+              key={skill}
+              className="rounded-xl border border-ink/10 bg-ink/[0.015] p-4 flex flex-col gap-3 shadow-sm"
+            >
+              <div className="flex items-start gap-3">
+                <span className="text-2xl shrink-0" aria-hidden>
+                  {SKILL_ICONS[skill]}
+                </span>
+                <div>
+                  <h3 className="font-semibold text-ink">{SKILL_LABELS[skill]}</h3>
+                  <p className="text-sm text-ink/60 mt-1 leading-relaxed">{SKILL_BLURBS[skill]}</p>
+                  <p className="text-xs text-ink/45 mt-2">
+                    {skill === "reading" || skill === "listening"
+                      ? "10 multiple-choice questions"
+                      : "3 short open tasks — type your answer in full"}
+                  </p>
+                </div>
+              </div>
+              <button type="button" onClick={() => startTest(skill)} className="btn-primary mt-auto w-full sm:w-auto">
+                {pendingSkill === skill ? `Resume ${SKILL_LABELS[skill]}` : `Start ${SKILL_LABELS[skill]} test`}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Step 2 — track progress (ChatGPT journal) */}
+      <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-6 space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent/90">Step 2</p>
+          <h2 className="text-lg font-semibold text-ink mt-1">Track your progress with ChatGPT</h2>
+          <p className="mt-2 text-sm text-ink/60 leading-relaxed">
+            Improvement takes time. Use a simple learning journal: review mistakes, notice what felt easy or hard, and set
+            small weekly goals. Paste the prompt below into ChatGPT (or any assistant you use) alongside your in-app
+            tests.
+          </p>
+        </div>
+        <ul className="text-sm text-ink/65 space-y-1.5 list-disc pl-5">
+          <li>Schedule a short weekly check-in about what you studied.</li>
+          <li>Ask for reminders of past errors and how to fix them.</li>
+          <li>Reflect on topics that were easy vs. difficult.</li>
+        </ul>
+        <div className="grid gap-3 md:grid-cols-2">
+          <CopyablePrompt label="Skill-by-skill (with your level)" text={promptSkillBySkill} />
+          <CopyablePrompt label="Weekly learning journal" text={promptJournal} />
+        </div>
+        <p className="text-xs text-ink/45">
+          For listening practice outside the app, you can paste a short YouTube link into ChatGPT and ask for a quiz on
+          what was said — combine that with the listening test here.
+        </p>
       </div>
 
       {completedHistory.length > 0 && (
@@ -1113,7 +1285,7 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
             className="flex items-center gap-2 text-sm font-medium text-ink/50 hover:text-ink/70 transition-colors"
           >
             <span className={`inline-block transition-transform ${historyOpen ? "rotate-90" : ""}`}>▶</span>
-            Test History ({completedHistory.length})
+            Test history ({completedHistory.length})
           </button>
           {historyOpen && <HistoryList history={completedHistory} />}
         </div>
