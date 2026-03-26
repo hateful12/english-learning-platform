@@ -3,81 +3,69 @@ import Link from "next/link";
 
 export function Logo({ variant }: { variant?: "light" | "default" }) {
   const isLight = variant === "light";
-  const blueColor = isLight ? "#5b8fff" : "#1a4fd6";
-  const blueShadow = isLight
-    ? "0 1px 0 #8bb3ff, 0 2px 0 #5b8fff, 0 3px 4px rgba(0,0,100,0.4), 0 0 16px rgba(100,150,255,0.5)"
-    : "0 1px 0 #5b8fff, 0 2px 0 #3a6ee8, 0 3px 4px rgba(0,0,100,0.35), 0 0 12px rgba(80,120,255,0.25)";
-  const redColor = isLight ? "#ff6b6b" : "#d42020";
-  const redShadow = isLight
-    ? "0 1px 0 #ff9999, 0 2px 0 #ff6b6b, 0 3px 4px rgba(100,0,0,0.4), 0 0 16px rgba(255,100,100,0.5)"
-    : "0 1px 0 #ff6b6b, 0 2px 0 #c43030, 0 3px 4px rgba(100,0,0,0.35), 0 0 12px rgba(255,80,80,0.25)";
-  const waveStroke = isLight ? "#ff6b6b" : "#d42020";
-  const waveStroke2 = isLight ? "#5b8fff" : "#1a4fd6";
+  const textGradient = isLight
+    ? "linear-gradient(90deg, #f0d4e0 0%, #f5dde8 35%, #fae8ef 70%, #fff5f8 100%)"
+    : "linear-gradient(90deg, #5a3d4a 0%, #6a4a58 28%, #9a6f82 52%, #d4a8b8 85%, #deb8c4 100%)";
+  const swooshMain = isLight ? "#c49bab" : "#684252";
+  const swooshAccent = isLight ? "#c4a8cf" : "#957aa8";
+  const starFill = isLight ? "#b888c8" : "#7a5694";
+  const dotFill = isLight ? "#a890c0" : "#8b6aa0";
 
   return (
     <Link href="/" className="flex items-center gap-2 group select-none">
       <Image
         src="/logo.png"
-        alt="senira.english"
+        alt=""
         width={80}
         height={80}
         className="h-16 w-auto object-contain"
         priority
       />
-      <div className="flex flex-col leading-none">
-        <div className="flex items-baseline">
-          <span
-            style={{
-              fontFamily: "'Lora', Georgia, serif",
-              fontStyle: "italic",
-              fontWeight: 800,
-              fontSize: "1.75rem",
-              color: blueColor,
-              textShadow: blueShadow,
-              letterSpacing: "-0.01em",
-              lineHeight: 1,
-            }}
-          >
-            senira
-          </span>
-          <span
-            style={{
-              fontFamily: "'Lora', Georgia, serif",
-              fontStyle: "italic",
-              fontWeight: 800,
-              fontSize: "1.75rem",
-              color: redColor,
-              textShadow: redShadow,
-              letterSpacing: "-0.01em",
-              lineHeight: 1,
-            }}
-          >
-            .english
-          </span>
-        </div>
-        {/* decorative wave */}
+      <div className="flex w-fit flex-col leading-none">
+        <span
+          className="lowercase"
+          style={{
+            fontFamily: "'Lora', Georgia, serif",
+            fontStyle: "italic",
+            fontWeight: 600,
+            fontSize: "1.75rem",
+            letterSpacing: "-0.02em",
+            lineHeight: 1,
+            backgroundImage: textGradient,
+            WebkitBackgroundClip: "text",
+            backgroundClip: "text",
+            color: "transparent",
+          }}
+        >
+          senira.english
+        </span>
         <svg
-          viewBox="0 0 160 14"
-          height="10"
-          width="160"
+          viewBox="0 0 200 26"
           xmlns="http://www.w3.org/2000/svg"
-          className="mt-0.5"
+          className="mt-1 h-[1.05rem] w-full"
+          preserveAspectRatio="xMidYMid meet"
+          aria-hidden
         >
           <path
-            d="M0 8 Q20 2 40 8 Q60 14 80 8 Q100 2 120 8 Q140 14 160 8"
+            d="M 4 11 C 22 22 58 20 92 12 C 118 6 138 8 148 12"
             fill="none"
-            stroke={waveStroke}
-            strokeWidth="2.5"
+            stroke={swooshMain}
+            strokeWidth="3.2"
             strokeLinecap="round"
           />
           <path
-            d="M0 11 Q20 5 40 11 Q60 17 80 11 Q100 5 120 11 Q140 17 160 11"
+            d="M 132 12 C 152 4 176 2 196 5"
             fill="none"
-            stroke={waveStroke2}
-            strokeWidth="1.5"
+            stroke={swooshAccent}
+            strokeWidth="1.6"
             strokeLinecap="round"
-            opacity="0.7"
+            opacity={0.92}
           />
+          <path
+            d="M 162 8.2 L 163.45 11.25 L 166.7 11.7 L 164.35 13.95 L 164.9 17.2 L 162 15.55 L 159.1 17.2 L 159.65 13.95 L 157.3 11.7 L 160.55 11.25 Z"
+            fill={starFill}
+          />
+          <circle cx="197.5" cy="5.2" r="1.35" fill={dotFill} />
         </svg>
       </div>
     </Link>
