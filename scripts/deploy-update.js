@@ -56,8 +56,26 @@ async function main() {
   try {
     await run(
       conn,
-      `cd ${APP_DIR} && git fetch origin && git checkout ${BRANCH} && git reset --hard origin/${BRANCH}`,
-      "1. Git sync to origin branch"
+      `set -e
+BACKUP_DIR=/var/backups/english-app
+mkdir -p "$BACKUP_DIR"
+TS=$(date +%s)
+KEEP="$BACKUP_DIR/pre-deploy-$TS.db"
+cd ${APP_DIR}
+if [ -f prisma/prisma/dev.db ]; then
+  cp prisma/prisma/dev.db "$KEEP"
+  echo "Backed up DB to $KEEP"
+else
+  echo "No existing prisma/prisma/dev.db to back up (first deploy or missing file)."
+fi
+git fetch origin && git checkout ${BRANCH} && git reset --hard origin/${BRANCH}
+if [ -f "$KEEP" ]; then
+  cp "$KEEP" prisma/prisma/dev.db
+  echo "Restored DB from $KEEP (survives git reset; do not commit SQLite)."
+else
+  echo "No backup to restore — create prisma/prisma/dev.db or upload with scripts/upload-db-to-vps.js"
+fi`,
+      "1. Backup DB, git sync, restore DB"
     );
     await run(conn, `cd ${APP_DIR} && npm ci`, "2. npm ci");
     await run(conn, `cd ${APP_DIR} && npx prisma db push`, "3. Prisma db push");
