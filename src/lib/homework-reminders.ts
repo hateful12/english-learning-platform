@@ -206,12 +206,14 @@ export async function notifyStudentsNewHomework(args: {
   attachmentsJson: string;
   studentId: string | null;
   groupId: string | null;
-}): Promise<void> {
+  /** If set, replaces the default “You have new homework…” intro. */
+  leadHtml?: string;
+}): Promise<{ recipientCount: number; sent: number; failed: number }> {
   const ids = await collectStudentIdsForHomework({
     studentId: args.studentId,
     groupId: args.groupId,
   });
-  if (ids.length === 0) return;
+  if (ids.length === 0) return { recipientCount: 0, sent: 0, failed: 0 };
 
   const students = await prisma.student.findMany({
     where: { id: { in: ids } },
@@ -219,6 +221,12 @@ export async function notifyStudentsNewHomework(args: {
   });
 
   const baseUrl = await getAppBaseUrl();
+  let sent = 0;
+  let failed = 0;
+
+  const lead =
+    args.leadHtml ??
+    `<p>You have new homework: <strong>${escapeHtml(args.title)}</strong>.</p>`;
 
   for (const s of students) {
     const name = s.name || "there";
@@ -228,18 +236,63 @@ export async function notifyStudentsNewHomework(args: {
       homeworkId: args.homeworkId,
       baseUrl,
       attachmentsJson: args.attachmentsJson,
-      leadHtml: `<p>You have new homework: <strong>${escapeHtml(args.title)}</strong>.</p>`,
+      leadHtml: lead,
     });
+
+    const subject =
+      args.leadHtml !== undefined ? `Homework: ${args.title}` : `New homework: ${args.title}`;
 
     const result = await sendTransactionalEmail({
       to: s.email,
-      subject: `New homework: ${args.title}`,
+      subject,
       html,
     });
-    if (!result.ok) {
-      console.error("[new-homework-email] failed", s.id, s.email, result.error);
+    if (result.ok) {
+      sent++;
+    } else {
+      failed++;
+      console.error("[homework-notify-email] failed", s.id, s.email, result.error);
     }
   }
+
+  return { recipientCount: students.length, sent, failed };
+}
+
+/** Load homework from DB and send the same notification email as on create (for manual “Notify” from teacher UI). */
+export async function notifyHomeworkById(
+  homeworkId: string
+): Promise<
+  | { ok: true; recipientCount: number; sent: number; failed: number }
+  | { ok: false; error: string }
+> {
+  const hw = await prisma.homework.findUnique({
+    where: { id: homeworkId },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      attachments: true,
+      studentId: true,
+      groupId: true,
+    },
+  });
+  if (!hw) return { ok: false, error: "Homework not found" };
+
+  const stats = await notifyStudentsNewHomework({
+    homeworkId: hw.id,
+    title: hw.title,
+    description: hw.description,
+    attachmentsJson: hw.attachments || "[]",
+    studentId: hw.studentId,
+    groupId: hw.groupId,
+    leadHtml: `<p>Your teacher asked us to send you this homework again: <strong>${escapeHtml(hw.title)}</strong>.</p>`,
+  });
+
+  if (stats.recipientCount === 0) {
+    return { ok: false, error: "No students are assigned to this homework" };
+  }
+
+  return { ok: true, ...stats };
 }
 
 export async function sendDueHomeworkReminders(limit = 30): Promise<{ sent: number; failed: number }> {

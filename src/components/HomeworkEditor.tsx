@@ -316,6 +316,7 @@ export function HomeworkEditor({
   onUpdate: () => void;
 }) {
   const [closingId, setClosingId] = useState<string | null>(null);
+  const [notifyingId, setNotifyingId] = useState<string | null>(null);
 
   async function handleStudentClose(homeworkId: string, studentId: string, close: boolean) {
     setClosingId(`${homeworkId}:${studentId}`);
@@ -416,6 +417,30 @@ export function HomeworkEditor({
       body: JSON.stringify({ status: newStatus }),
     });
     onUpdate();
+  }
+
+  async function handleNotifyNow(homeworkId: string) {
+    setNotifyingId(homeworkId);
+    try {
+      const res = await fetch(`/api/homework/${homeworkId}/notify`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || "Could not send notifications");
+        return;
+      }
+      const sent = typeof data.sent === "number" ? data.sent : 0;
+      const failed = typeof data.failed === "number" ? data.failed : 0;
+      const recipientCount = typeof data.recipientCount === "number" ? data.recipientCount : sent + failed;
+      if (failed > 0) {
+        alert(
+          `Sent ${sent} of ${recipientCount} email(s). ${failed} failed — check the server terminal and Gmail / .env settings.`
+        );
+      } else {
+        alert(`Notification sent to ${sent} student${sent === 1 ? "" : "s"}.`);
+      }
+    } finally {
+      setNotifyingId(null);
+    }
   }
 
   async function handleUpdate(e: React.FormEvent) {
@@ -830,6 +855,15 @@ export function HomeworkEditor({
                     >
                       Edit
                     </button>
+                    <button
+                      type="button"
+                      disabled={notifyingId === item.id}
+                      onClick={() => handleNotifyNow(item.id)}
+                      title="Email students this homework now (preview + link)"
+                      className="btn-secondary text-sm border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
+                    >
+                      {notifyingId === item.id ? "Sending…" : "Notify"}
+                    </button>
                     <button type="button" onClick={() => handleDelete(item.id)} className="text-sm text-red-600 hover:underline">Delete</button>
                   </div>
                 </div>
@@ -960,6 +994,15 @@ export function HomeworkEditor({
                               className="flex items-center gap-1 rounded px-2 py-1 text-sm text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
                             >
                               ☑ <span className="hidden sm:inline">Reopen</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={notifyingId === item.id}
+                              onClick={() => handleNotifyNow(item.id)}
+                              title="Email students this homework now"
+                              className="btn-secondary text-sm border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
+                            >
+                              {notifyingId === item.id ? "Sending…" : "Notify"}
                             </button>
                             <button type="button" onClick={() => handleDelete(item.id)} className="text-sm text-red-400 hover:text-red-600 hover:underline">Delete</button>
                           </div>
