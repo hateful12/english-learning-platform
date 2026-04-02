@@ -18,6 +18,13 @@ export const EXERCISE_TYPES: ExerciseTypeDef[] = [
       "spoken English: short prompts the student can answer aloud; they may submit voice recordings (transcribed for feedback) or text",
   },
   {
+    id: "reading",
+    title: "Reading",
+    description: "Short texts with questions on gist, detail, and vocabulary.",
+    focus: "reading comprehension: gist, detail, and vocabulary in context",
+    availableSoon: true,
+  },
+  {
     id: "grammar",
     title: "Grammar in use",
     description: "Tenses, prepositions, word order, and sentence patterns.",

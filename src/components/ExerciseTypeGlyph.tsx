@@ -1,4 +1,4 @@
-/** Simple shapes for low-level readers: microphone = speak / hear yourself; book = study. */
+/** Simple shapes for low-level readers: mic = speak; document lines = read; book = grammar study. */
 
 export function ExerciseTypeGlyph({
   exerciseId,
@@ -17,6 +17,19 @@ export function ExerciseTypeGlyph({
         focusable="false"
       >
         <path d="M12 14a3 3 0 003-3V5a3 3 0 10-6 0v6a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 006 6.92V21h2v-3.08A7 7 0 0019 11h-2z" />
+      </svg>
+    );
+  }
+  if (exerciseId === "reading") {
+    return (
+      <svg
+        className={className}
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        aria-hidden
+        focusable="false"
+      >
+        <path d="M6 3h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2zm2 4h8v1.5H8V7zm0 3h8v1.5H8V10zm0 3h8v1.5H8V13z" />
       </svg>
     );
   }
