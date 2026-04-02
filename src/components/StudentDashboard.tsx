@@ -43,7 +43,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "homework", label: "Homework", icon: "📝" },
   { id: "payments", label: "Payments", icon: "💳" },
   { id: "progress-test", label: "Progress Test", icon: "🎯" },
-  { id: "learn-ai", label: "Learn with AI", icon: "🤖" },
+  { id: "learn-ai", label: "AI practice", icon: "🤖" },
   { id: "games", label: "Games", icon: "🎮" },
 ];
 
@@ -404,7 +404,7 @@ export function StudentDashboard() {
         {/* Progress Test */}
         {activeTab === "progress-test" && <ProgressTestTab assignedLevel={studentInfo?.level ?? null} />}
 
-        {activeTab === "learn-ai" && <LearnEnglishAiTab />}
+        {activeTab === "learn-ai" && <LearnEnglishAiTab assignedLevel={studentInfo?.level ?? null} />}
 
         {/* Games */}
         {activeTab === "games" && (
