@@ -510,6 +510,10 @@ function StudentRow({
   const [priceInput, setPriceInput] = useState(currentPrice != null ? String(currentPrice) : "");
   const [savingPrice, setSavingPrice] = useState(false);
   const [savingLevel, setSavingLevel] = useState(false);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [tempPassword, setTempPassword] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
   async function savePrice() {
     setSavingPrice(true);
@@ -534,8 +538,36 @@ function StudentRow({
     onUpdate();
   }
 
+  async function saveTemporaryPassword() {
+    setSavingPassword(true);
+    setPasswordMsg(null);
+    const res = await fetch("/api/students", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: student.id, temporaryPassword: tempPassword }),
+    });
+    let data: { error?: string } = {};
+    try {
+      data = await res.json();
+    } catch {
+      /* ignore */
+    }
+    setSavingPassword(false);
+    if (!res.ok) {
+      setPasswordMsg({ type: "error", text: data.error ?? "Could not update password" });
+      return;
+    }
+    setPasswordMsg({
+      type: "ok",
+      text: "New password saved. Share it with the student so they can log in.",
+    });
+    setTempPassword("");
+    onUpdate();
+  }
+
   return (
-    <li className="flex items-center justify-between gap-3 py-3 flex-wrap">
+    <li className="flex flex-col w-full">
+      <div className="flex items-center justify-between gap-3 py-3 flex-wrap">
       <div className="min-w-0">
         {student.name && <p className="font-medium text-ink truncate">{student.name}</p>}
         <p className={`text-sm truncate ${student.name ? "text-ink/50" : "font-medium text-ink"}`}>
@@ -617,7 +649,61 @@ function StudentRow({
             {new Date(student.createdAt).toLocaleDateString()}
           </span>
         )}
+
+        <button
+          type="button"
+          onClick={() => {
+            setPasswordMsg(null);
+            setShowPasswordReset((p) => {
+              if (p) setTempPassword("");
+              return !p;
+            });
+          }}
+          className="text-xs text-ink/50 hover:text-ink/80 border border-dashed border-ink/20 rounded px-2 py-0.5 hover:border-ink/40 transition-colors"
+          title="Set a new password if the student forgot theirs"
+        >
+          {showPasswordReset ? "Close" : "New password"}
+        </button>
       </div>
+      </div>
+
+      {showPasswordReset && (
+        <div className="pb-4 pt-3 space-y-2 border-t border-ink/5">
+          <p className="text-xs text-ink/50">
+            Set a temporary password (at least 8 characters). Tell the student the new password out of band.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={tempPassword}
+              onChange={(e) => setTempPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveTemporaryPassword();
+              }}
+              className="input text-sm py-1 max-w-[220px]"
+              placeholder="New password"
+              disabled={savingPassword}
+            />
+            <button
+              type="button"
+              disabled={savingPassword || tempPassword.length < 8}
+              onClick={saveTemporaryPassword}
+              className="btn-secondary text-xs py-1 disabled:opacity-50"
+            >
+              {savingPassword ? "Saving…" : "Save password"}
+            </button>
+          </div>
+          {passwordMsg && (
+            <p
+              className={`text-xs ${passwordMsg.type === "ok" ? "text-green-700" : "text-red-600"}`}
+              role="status"
+            >
+              {passwordMsg.text}
+            </p>
+          )}
+        </div>
+      )}
     </li>
   );
 }

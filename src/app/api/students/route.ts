@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isTeacherLoggedIn } from "@/lib/auth";
+import { hashPassword, isTeacherLoggedIn } from "@/lib/auth";
 
 const VALID_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
+const PASSWORD_MIN = 8;
+const PASSWORD_MAX = 72; // bcrypt silently truncates beyond 72 bytes
 
 export async function GET() {
   const loggedIn = await isTeacherLoggedIn();
@@ -25,7 +27,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { id, lessonPrice, level } = (body as Record<string, unknown>) ?? {};
+  const { id, lessonPrice, level, temporaryPassword } = (body as Record<string, unknown>) ?? {};
   if (typeof id !== "string") return NextResponse.json({ error: "id required" }, { status: 400 });
 
   const updateData: Record<string, unknown> = {};
@@ -45,6 +47,35 @@ export async function PATCH(request: NextRequest) {
     } else {
       return NextResponse.json({ error: "Invalid level" }, { status: 400 });
     }
+  }
+
+  if (temporaryPassword !== undefined) {
+    if (typeof temporaryPassword !== "string") {
+      return NextResponse.json({ error: "Invalid temporary password" }, { status: 400 });
+    }
+    const pwd = temporaryPassword;
+    if (pwd.length < PASSWORD_MIN) {
+      return NextResponse.json(
+        { error: `Temporary password must be at least ${PASSWORD_MIN} characters` },
+        { status: 400 }
+      );
+    }
+    if (pwd.length > PASSWORD_MAX) {
+      return NextResponse.json(
+        { error: `Temporary password must be at most ${PASSWORD_MAX} characters` },
+        { status: 400 }
+      );
+    }
+    updateData.passwordHash = await hashPassword(pwd);
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
+
+  const existing = await prisma.student.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) {
+    return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
 
   const updated = await prisma.student.update({
