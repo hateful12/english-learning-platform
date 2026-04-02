@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { EXERCISE_TYPES } from "@/data/learnEnglishExerciseTypes";
+import { buildExerciseImageUrl } from "@/lib/exercise-image-url";
 import type { StructuredExerciseFeedback, TaskFeedbackBlock } from "@/lib/exercise-feedback";
 
 const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
@@ -13,7 +14,7 @@ function normalizeLevel(raw: string | null | undefined): string {
   return CEFR_RE.test(t) ? t : "B1";
 }
 
-type Task = { id: string; question: string };
+type Task = { id: string; question: string; imageTags?: string };
 
 type ActiveExercise = {
   exerciseTypeId: string;
@@ -331,8 +332,14 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
         if (!item || typeof item !== "object") continue;
         const id = (item as { id?: unknown }).id;
         const question = (item as { question?: unknown }).question;
+        const imageTags =
+          typeof (item as { imageTags?: unknown }).imageTags === "string"
+            ? (item as { imageTags: string }).imageTags.trim().slice(0, 80) || undefined
+            : undefined;
         if (typeof id === "string" && typeof question === "string" && id.trim() && question.trim()) {
-          tasks.push({ id: id.trim(), question: question.trim() });
+          const row: Task = { id: id.trim(), question: question.trim() };
+          if (imageTags) row.imageTags = imageTags;
+          tasks.push(row);
         }
       }
       if (tasks.length === 0) {
@@ -626,9 +633,21 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
             </button>
           </div>
           <ol className="space-y-5 list-decimal list-inside marker:font-semibold marker:text-accent">
-            {active.tasks.map((t, index) => (
+            {active.tasks.map((t, index) => {
+              const pictureUrl = t.imageTags ? buildExerciseImageUrl(t.imageTags) : "";
+              return (
               <li key={t.id} className="pl-0">
                 <div className="inline-block w-[calc(100%-1.5rem)] align-top">
+                  {pictureUrl ? (
+                    <figure className="mb-3 overflow-hidden rounded-lg border border-ink/12 bg-white/80 shadow-sm">
+                      <img
+                        src={pictureUrl}
+                        alt="Picture for this task — answer in English as the question asks."
+                        className="w-full max-h-52 object-cover bg-ink/5"
+                        loading="lazy"
+                      />
+                    </figure>
+                  ) : null}
                   <p className="text-sm text-ink font-medium mb-2">
                     <span className="text-ink/50 font-normal mr-1">{index + 1}.</span>
                     {t.question}
@@ -705,7 +724,8 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
                   )}
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ol>
           <div className="flex flex-wrap gap-2 pt-2">
             <button
