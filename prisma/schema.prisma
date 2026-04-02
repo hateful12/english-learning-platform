@@ -25,8 +25,21 @@ model Student {
   scheduledLessons    ScheduledLesson[]
   payments            Payment[]
   groupLessonPayments GroupLessonPayment[]
-  assessments         Assessment[]
-  wordleGames         WordleGame[]
+  assessments               Assessment[]
+  wordleGames               WordleGame[]
+  speakingPracticePrompts   SpeakingPracticePrompt[]
+}
+
+// Per-question history for AI speaking practice (speaking-prep); used to avoid repeats.
+model SpeakingPracticePrompt {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  level     String // CEFR band at generation time
+  question  String
+  createdAt DateTime @default(now())
+
+  @@index([studentId, createdAt])
 }
 
 model WordleGame {

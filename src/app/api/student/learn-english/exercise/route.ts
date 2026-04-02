@@ -4,6 +4,7 @@ import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { getStudentId } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { parseStructuredFeedback, type StructuredExerciseFeedback } from "@/lib/exercise-feedback";
 import {
   createAssessmentOpenAI,
@@ -28,6 +29,29 @@ function stripJsonFence(s: string): string {
 }
 
 type Task = { id: string; question: string };
+
+const SPEAKING_PRIOR_FETCH = 120;
+const SPEAKING_PRIOR_BODY_MAX_CHARS = 10_000;
+
+function formatPriorSpeakingQuestionsForPrompt(questions: string[]): string {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const q of questions) {
+    const t = q.trim();
+    if (!t) continue;
+    const key = t.toLowerCase().replace(/\s+/g, " ");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(t);
+  }
+  let body = "";
+  for (let i = 0; i < unique.length; i++) {
+    const line = `${i + 1}. ${unique[i]}\n`;
+    if (body.length + line.length > SPEAKING_PRIOR_BODY_MAX_CHARS) break;
+    body += line;
+  }
+  return body.trimEnd();
+}
 
 function resolveHomeworkUploadFilePath(publicUrl: string): string | null {
   if (typeof publicUrl !== "string" || !publicUrl.startsWith("/uploads/homework/")) return null;
@@ -254,8 +278,14 @@ function buildGenerateUserMessage(
   level: string,
   exerciseFocus: string,
   focusNote: string | undefined,
-  exerciseId: string
+  exerciseId: string,
+  priorSpeakingQuestions?: string[]
 ): string {
+  const speakingAvoid =
+    exerciseId === "speaking-prep" && priorSpeakingQuestions && priorSpeakingQuestions.length > 0
+      ? `\nSpeaking prompts this student already received in earlier sessions (newest first). Do **not** reuse the same task, topic, scenario, or a close paraphrase — choose clearly different situations, roles, time frames, and question types.\n\n${formatPriorSpeakingQuestionsForPrompt(priorSpeakingQuestions)}\n`
+      : "";
+
   const speakingNote =
     exerciseId === "speaking-prep"
       ? "\nThis is speaking practice: use prompts the student can answer in 20–40 seconds of speech (opinion, describe, role-play cue). They may answer by voice recording or typing.\n"
@@ -301,7 +331,7 @@ Read-aloud mode (critical) — **one exercise, one story**:
   return `Create short English practice for one student at CEFR ${level}.
 
 Exercise type / focus: ${exerciseFocus}
-${speakingNote}${readingNote}${focusNote?.trim() ? `Student note (honour if sensible): ${focusNote.trim()}\n` : ""}
+${speakingNote}${speakingAvoid}${readingNote}${focusNote?.trim() ? `Student note (honour if sensible): ${focusNote.trim()}\n` : ""}
 ${grammarNote}
 Task depth (follow closely):
 ${depth}
@@ -344,10 +374,23 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Missing exerciseId" }, { status: 400 });
       }
 
+      let priorSpeakingQuestions: string[] | undefined;
+      if (exerciseId === "speaking-prep") {
+        const rows = await prisma.speakingPracticePrompt.findMany({
+          where: { studentId },
+          orderBy: { createdAt: "desc" },
+          take: SPEAKING_PRIOR_FETCH,
+          select: { question: true },
+        });
+        priorSpeakingQuestions = rows.map((r) => r.question);
+      }
+
       const systemGenerate =
         exerciseId === "reading"
           ? "You write concise English learning exercises. For read-aloud activities, the quoted story must strictly match the student's CEFR band in vocabulary and grammar — do not level up or level down. Output only valid JSON as requested. No markdown."
-          : "You write concise English learning exercises. Calibrate cognitive demand to the CEFR level: B1 and above must not collapse into single-sentence literal recall. For grammar exercises, vary the grammar focus across tasks — do not default every item to reported speech. Output only valid JSON as requested. No markdown.";
+          : exerciseId === "speaking-prep"
+            ? "You write concise English learning exercises. For speaking practice, when the user lists prompts the student already did, you must generate wholly new prompts — no repetition or thin rewording of those topics. Calibrate to the CEFR level. Output only valid JSON as requested. No markdown."
+            : "You write concise English learning exercises. Calibrate cognitive demand to the CEFR level: B1 and above must not collapse into single-sentence literal recall. For grammar exercises, vary the grammar focus across tasks — do not default every item to reported speech. Output only valid JSON as requested. No markdown.";
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -358,7 +401,13 @@ export async function POST(request: NextRequest) {
           },
           {
             role: "user",
-            content: buildGenerateUserMessage(level, exerciseFocus, focusNote || undefined, exerciseId),
+            content: buildGenerateUserMessage(
+              level,
+              exerciseFocus,
+              focusNote || undefined,
+              exerciseId,
+              priorSpeakingQuestions
+            ),
           },
         ],
         temperature: 0.75,
@@ -373,6 +422,20 @@ export async function POST(request: NextRequest) {
           { error: "Could not build an exercise. Tap “New exercise” to try again." },
           { status: 502 }
         );
+      }
+
+      if (exerciseId === "speaking-prep") {
+        try {
+          await prisma.speakingPracticePrompt.createMany({
+            data: parsed.tasks.map((t) => ({
+              studentId,
+              level,
+              question: t.question.slice(0, 8000),
+            })),
+          });
+        } catch (e) {
+          console.error("speaking practice prompt persist", e);
+        }
       }
 
       return NextResponse.json({
