@@ -78,6 +78,41 @@ function parseGeneratedExercise(content: string): { title: string; introduction:
   }
 }
 
+function parseUkrainianTranslation(content: string): {
+  titleUk: string;
+  introductionUk: string;
+  taskQuestionUk: Record<string, string>;
+} | null {
+  const raw = stripJsonFence(content);
+  try {
+    const o = JSON.parse(raw) as {
+      titleUk?: unknown;
+      introductionUk?: unknown;
+      tasks?: unknown;
+    };
+    if (typeof o.titleUk !== "string" || typeof o.introductionUk !== "string" || !Array.isArray(o.tasks)) {
+      return null;
+    }
+    const taskQuestionUk: Record<string, string> = {};
+    for (const item of o.tasks) {
+      if (!item || typeof item !== "object") continue;
+      const id = (item as { id?: unknown }).id;
+      const questionUk = (item as { questionUk?: unknown }).questionUk;
+      if (typeof id !== "string" || typeof questionUk !== "string") continue;
+      const tid = id.trim();
+      if (tid) taskQuestionUk[tid] = questionUk.trim();
+    }
+    if (Object.keys(taskQuestionUk).length === 0) return null;
+    return {
+      titleUk: o.titleUk.trim(),
+      introductionUk: o.introductionUk.trim(),
+      taskQuestionUk,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function buildGenerateUserMessage(
   level: string,
   exerciseFocus: string,
@@ -288,7 +323,73 @@ Rules:
       return NextResponse.json({ structured: null, feedback: raw });
     }
 
-    return NextResponse.json({ error: "Invalid phase. Use generate or feedback." }, { status: 400 });
+    if (phase === "translateUk") {
+      const title = typeof body?.title === "string" ? body.title.trim().slice(0, 300) : "";
+      const introduction =
+        typeof body?.introduction === "string" ? body.introduction.trim().slice(0, 4000) : "";
+      const tasks = body?.tasks;
+      if (!title || !introduction || !Array.isArray(tasks)) {
+        return NextResponse.json({ error: "Invalid translate payload" }, { status: 400 });
+      }
+      const slim: { id: string; question: string }[] = [];
+      for (const item of tasks) {
+        if (!item || typeof item !== "object") continue;
+        const id = (item as { id?: unknown }).id;
+        const question = (item as { question?: unknown }).question;
+        if (typeof id !== "string" || typeof question !== "string") continue;
+        const tid = id.trim();
+        const q = question.trim();
+        if (tid && q) slim.push({ id: tid, question: q.slice(0, 4000) });
+      }
+      if (slim.length === 0) {
+        return NextResponse.json({ error: "No tasks to translate" }, { status: 400 });
+      }
+
+      const userContent = `You translate English learning exercise text into natural Ukrainian for students who find English hard (e.g. CEFR A1–A2).
+
+Keep the same meaning. Use simple, clear Ukrainian. Do not add new tasks or change task ids.
+
+English JSON:
+${JSON.stringify({ title, introduction, tasks: slim })}
+
+Return ONLY valid JSON (no markdown code fences), shape:
+{
+  "titleUk": "Ukrainian translation of title",
+  "introductionUk": "Ukrainian translation of introduction",
+  "tasks": [
+    { "id": "t1", "questionUk": "Ukrainian translation of that task question" }
+  ]
+}
+
+Include one tasks[] entry per input task, same "id" values, same order.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You output only valid JSON as requested. Accurate Ukrainian for language learners.",
+          },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.25,
+        max_tokens: 2500,
+      });
+
+      const raw = completion.choices[0]?.message?.content?.trim() ?? "";
+      if (!raw) {
+        return NextResponse.json({ error: "No translation returned." }, { status: 502 });
+      }
+      const parsed = parseUkrainianTranslation(raw);
+      if (!parsed) {
+        console.error("translateUk parse failed:", raw.slice(0, 400));
+        return NextResponse.json({ error: "Could not parse translation. Try again." }, { status: 502 });
+      }
+      return NextResponse.json({ ukrainian: parsed });
+    }
+
+    return NextResponse.json({ error: "Invalid phase. Use generate, feedback, or translateUk." }, { status: 400 });
   } catch (err) {
     if (isOpenAiAuthFailure(err)) {
       return NextResponse.json({ error: openAiInvalidKeyMessage(resolvedKey) }, { status: 502 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { EXERCISE_TYPES } from "@/data/learnEnglishExerciseTypes";
 import type { StructuredExerciseFeedback, TaskFeedbackBlock } from "@/lib/exercise-feedback";
 
@@ -24,6 +24,21 @@ type ActiveExercise = {
 };
 
 type AudioMeta = { url: string; name: string };
+
+type UkrainianPack = {
+  titleUk: string;
+  introductionUk: string;
+  taskQuestionUk: Record<string, string>;
+};
+
+function UkrainianPanel({ children }: { children: ReactNode }) {
+  return (
+    <div className="mt-2 rounded-md border-l-4 border-sky-500/50 bg-sky-50/70 pl-3 py-2 pr-2 text-sm text-ink/90">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-sky-900/70">Українська</p>
+      <div className="mt-1 whitespace-pre-wrap leading-relaxed">{children}</div>
+    </div>
+  );
+}
 
 function TextWithBold({ text }: { text: string }) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
@@ -123,6 +138,9 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   const [error, setError] = useState("");
   const [recordingTaskId, setRecordingTaskId] = useState<string | null>(null);
   const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
+  const [ukTranslation, setUkTranslation] = useState<UkrainianPack | null>(null);
+  const [showUkrainian, setShowUkrainian] = useState(false);
+  const [translatingUk, setTranslatingUk] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -134,6 +152,8 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
 
   const teacherLabel =
     assignedLevel && CEFR_RE.test(assignedLevel.trim()) ? assignedLevel.trim().toUpperCase() : null;
+
+  const isBeginnerLevel = levelInUse === "A1" || levelInUse === "A2";
 
   useEffect(() => {
     return () => {
@@ -148,6 +168,8 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
     setAudioByTask({});
     setFeedbackStructured(null);
     setFeedbackPlain(null);
+    setUkTranslation(null);
+    setShowUkrainian(false);
     setError("");
     stopRecording();
   }
@@ -255,6 +277,8 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
     setError("");
     setFeedbackStructured(null);
     setFeedbackPlain(null);
+    setUkTranslation(null);
+    setShowUkrainian(false);
     setAudioByTask({});
     setLoading(true);
     try {
@@ -320,6 +344,55 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadUkrainianTranslation() {
+    if (!active) return;
+    setTranslatingUk(true);
+    setError("");
+    try {
+      const res = await fetch("/api/student/learn-english/exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          phase: "translateUk",
+          title: active.title,
+          introduction: active.introduction,
+          tasks: active.tasks,
+        }),
+      });
+      const rawText = await res.text();
+      let data: { error?: unknown; ukrainian?: unknown } = {};
+      try {
+        data = JSON.parse(rawText) as typeof data;
+      } catch {
+        /* ignore */
+      }
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : `Request failed (${res.status})`);
+      }
+      const u = data.ukrainian as UkrainianPack | undefined;
+      if (
+        !u ||
+        typeof u.titleUk !== "string" ||
+        typeof u.introductionUk !== "string" ||
+        !u.taskQuestionUk ||
+        typeof u.taskQuestionUk !== "object"
+      ) {
+        throw new Error("Invalid translation from server.");
+      }
+      setUkTranslation({
+        titleUk: u.titleUk,
+        introductionUk: u.introductionUk,
+        taskQuestionUk: u.taskQuestionUk as Record<string, string>,
+      });
+      setShowUkrainian(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Translation failed.");
+    } finally {
+      setTranslatingUk(false);
     }
   }
 
@@ -491,10 +564,53 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
       {active && !hasFeedback && (
         <div className="rounded-xl border border-accent/25 bg-accent/[0.05] p-4 md:p-5 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-accent">Your exercise</p>
               <h4 className="mt-1 font-serif text-lg font-semibold text-ink">{active.title}</h4>
+              {showUkrainian && ukTranslation ? (
+                <UkrainianPanel>{ukTranslation.titleUk}</UkrainianPanel>
+              ) : null}
               <p className="mt-2 text-sm text-ink/75 whitespace-pre-wrap">{active.introduction}</p>
+              {showUkrainian && ukTranslation ? (
+                <UkrainianPanel>{ukTranslation.introductionUk}</UkrainianPanel>
+              ) : null}
+
+              {isBeginnerLevel && !ukTranslation ? (
+                <p className="mt-3 text-sm text-ink/70 rounded-lg border border-sky-200/80 bg-sky-50/50 px-3 py-2">
+                  <span className="font-medium text-ink">Складно читати англійською?</span> Натисніть «Перекласти
+                  опис українською» — зʼявиться допомога українською. Відповіді все одно давайте англійською (або
+                  голосом у Speaking prep).
+                </p>
+              ) : null}
+
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void loadUkrainianTranslation()}
+                  disabled={loading || translatingUk || !!ukTranslation}
+                  className="btn-secondary text-sm"
+                >
+                  {translatingUk
+                    ? "Перекладаємо…"
+                    : ukTranslation
+                      ? "Переклад готовий"
+                      : "Перекласти опис українською"}
+                </button>
+                {ukTranslation ? (
+                  <label className="flex items-center gap-2 text-sm text-ink/80 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="rounded border-ink/30"
+                      checked={showUkrainian}
+                      onChange={(e) => setShowUkrainian(e.target.checked)}
+                      disabled={loading}
+                    />
+                    Показати переклад
+                  </label>
+                ) : !isBeginnerLevel ? (
+                  <span className="text-xs text-ink/45">Опційно для будь-якого рівня</span>
+                ) : null}
+              </div>
             </div>
             <button type="button" onClick={resetAll} disabled={loading} className="btn-secondary text-sm shrink-0">
               Cancel
@@ -508,6 +624,9 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
                     <span className="text-ink/50 font-normal mr-1">{index + 1}.</span>
                     {t.question}
                   </p>
+                  {showUkrainian && ukTranslation?.taskQuestionUk[t.id] ? (
+                    <UkrainianPanel>{ukTranslation.taskQuestionUk[t.id]}</UkrainianPanel>
+                  ) : null}
                   <textarea
                     value={answers[t.id] ?? ""}
                     onChange={(e) =>
