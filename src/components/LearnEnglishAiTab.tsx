@@ -68,10 +68,13 @@ function ExerciseFeedbackPanel({
   structured,
   plain,
   taskOrder,
+  studentAnswers,
 }: {
   structured: StructuredExerciseFeedback | null;
   plain: string | null;
-  taskOrder: { id: string }[];
+  taskOrder: { id: string; question?: string }[];
+  /** Answers exactly as sent with this feedback request (stable even if the form state changes later). */
+  studentAnswers: Record<string, string> | null;
 }) {
   if (structured) {
     const ordered: TaskFeedbackBlock[] = [];
@@ -84,7 +87,10 @@ function ExerciseFeedbackPanel({
 
     return (
       <div className="space-y-4">
-        {blocks.map((block) => (
+        {blocks.map((block) => {
+          const ans = studentAnswers?.[block.id];
+          const ansTrim = typeof ans === "string" ? ans.trim() : "";
+          return (
           <article
             key={block.id}
             className="rounded-xl border border-ink/10 bg-white/95 p-4 shadow-sm ring-1 ring-ink/5"
@@ -93,6 +99,14 @@ function ExerciseFeedbackPanel({
               Task <span className="font-mono text-accent">{block.id}</span>
             </h5>
             <dl className="mt-3 space-y-3 text-sm">
+              {ansTrim ? (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-ink/45">Your answer</dt>
+                  <dd className="mt-1 rounded-md border border-ink/8 bg-ink/[0.03] px-3 py-2 text-ink/90 whitespace-pre-wrap">
+                    {ansTrim}
+                  </dd>
+                </div>
+              ) : null}
               <div>
                 <dt className="text-xs font-medium uppercase tracking-wide text-ink/45">Feedback</dt>
                 <dd className="mt-1 text-ink/85 leading-relaxed">{block.feedback}</dd>
@@ -113,7 +127,8 @@ function ExerciseFeedbackPanel({
               </div>
             </dl>
           </article>
-        ))}
+          );
+        })}
         <div className="rounded-xl border border-accent/25 bg-accent/[0.07] p-4 text-sm text-ink/85">
           <p className="text-xs font-semibold uppercase tracking-wide text-accent/90 mb-2">Overall</p>
           <p className="leading-relaxed whitespace-pre-wrap">{structured.summary}</p>
@@ -123,8 +138,26 @@ function ExerciseFeedbackPanel({
   }
   if (plain) {
     return (
-      <div className="text-sm text-ink/85 whitespace-pre-wrap border border-ink/8 rounded-lg p-4 bg-ink/[0.02] max-h-[min(60vh,480px)] overflow-y-auto">
-        {plain}
+      <div className="space-y-4">
+        {studentAnswers && taskOrder.length > 0 ? (
+          <div className="rounded-xl border border-ink/10 bg-ink/[0.03] p-4 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink/50 mb-2">Your answers (as submitted)</p>
+            <ol className="list-decimal list-inside space-y-2 text-ink/90">
+              {taskOrder.map((t) => {
+                const a = (studentAnswers[t.id] ?? "").trim();
+                if (!a) return null;
+                return (
+                  <li key={t.id} className="whitespace-pre-wrap">
+                    <span className="font-mono text-accent">{t.id}</span>: {a}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        ) : null}
+        <div className="text-sm text-ink/85 whitespace-pre-wrap border border-ink/8 rounded-lg p-4 bg-ink/[0.02] max-h-[min(60vh,480px)] overflow-y-auto">
+          {plain}
+        </div>
       </div>
     );
   }
@@ -139,6 +172,8 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   const [audioByTask, setAudioByTask] = useState<Record<string, AudioMeta | null>>({});
   const [feedbackStructured, setFeedbackStructured] = useState<StructuredExerciseFeedback | null>(null);
   const [feedbackPlain, setFeedbackPlain] = useState<string | null>(null);
+  /** Answers copied at submit time so the feedback view cannot show stale text after a new round. */
+  const [feedbackAnswersSnapshot, setFeedbackAnswersSnapshot] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [recordingTaskId, setRecordingTaskId] = useState<string | null>(null);
@@ -151,6 +186,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   const streamRef = useRef<MediaStream | null>(null);
   const filePickTaskIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const generateRequestIdRef = useRef(0);
 
   const teacherLevel = normalizeLevel(assignedLevel);
   const levelInUse = manualLevel ?? teacherLevel;
@@ -180,6 +216,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
     setAudioByTask({});
     setFeedbackStructured(null);
     setFeedbackPlain(null);
+    setFeedbackAnswersSnapshot(null);
     setUkTranslation(null);
     setShowUkrainian(false);
     setError("");
@@ -285,13 +322,16 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   async function startExercise(exerciseTypeId: string) {
     const def = EXERCISE_TYPES.find((e) => e.id === exerciseTypeId);
     if (!def) return;
+    const requestId = ++generateRequestIdRef.current;
     stopRecording();
     setError("");
     setFeedbackStructured(null);
     setFeedbackPlain(null);
+    setFeedbackAnswersSnapshot(null);
     setUkTranslation(null);
     setShowUkrainian(false);
     setAudioByTask({});
+    setAnswers({});
     setLoading(true);
     try {
       const res = await fetch("/api/student/learn-english/exercise", {
@@ -349,6 +389,9 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
       if (tasks.length === 0) {
         throw new Error("No tasks in this exercise. Try again.");
       }
+      if (requestId !== generateRequestIdRef.current) {
+        return;
+      }
       setActive({
         exerciseTypeId: def.id,
         level: typeof data.level === "string" ? normalizeLevel(data.level) : levelInUse,
@@ -359,9 +402,13 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
       setAnswers(Object.fromEntries(tasks.map((t) => [t.id, ""])));
       setAudioByTask(Object.fromEntries(tasks.map((t) => [t.id, null])));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
+      if (requestId === generateRequestIdRef.current) {
+        setError(e instanceof Error ? e.message : "Something went wrong.");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === generateRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -417,6 +464,10 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
 
   async function submitFeedback() {
     if (!active) return;
+    const answersForRequest: Record<string, string> = {};
+    for (const t of active.tasks) {
+      answersForRequest[t.id] = answers[t.id] ?? "";
+    }
     setError("");
     setLoading(true);
     try {
@@ -436,7 +487,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
           title: active.title,
           introduction: active.introduction,
           tasks: active.tasks,
-          answers,
+          answers: answersForRequest,
           audioUrls: Object.keys(audioUrls).length ? audioUrls : undefined,
         }),
       });
@@ -460,16 +511,20 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
       if (data.structured && typeof data.structured === "object") {
         const s = data.structured as StructuredExerciseFeedback;
         if (typeof s.summary === "string" && Array.isArray(s.tasks) && s.tasks.length > 0) {
+          setFeedbackAnswersSnapshot({ ...answersForRequest });
           setFeedbackStructured(s);
           setFeedbackPlain(null);
         } else {
+          setFeedbackAnswersSnapshot({ ...answersForRequest });
           setFeedbackStructured(null);
           setFeedbackPlain(typeof data.feedback === "string" ? data.feedback : rawText);
         }
       } else if (typeof data.feedback === "string" && data.feedback.trim()) {
+        setFeedbackAnswersSnapshot({ ...answersForRequest });
         setFeedbackStructured(null);
         setFeedbackPlain(data.feedback);
       } else {
+        setFeedbackAnswersSnapshot({ ...answersForRequest });
         setFeedbackStructured(null);
         setFeedbackPlain("Could not load formatted feedback. Try “Check my answers” again.");
       }
@@ -761,6 +816,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
             structured={feedbackStructured}
             plain={feedbackPlain}
             taskOrder={active.tasks}
+            studentAnswers={feedbackAnswersSnapshot}
           />
           <div className="flex flex-wrap gap-2 pt-2">
             <button

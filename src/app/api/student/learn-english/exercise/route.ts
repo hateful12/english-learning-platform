@@ -326,7 +326,8 @@ Return ONLY valid JSON (no markdown code fences), exactly this shape:
 Rules:
 - Include exactly one object in "tasks" per task above, in this order: ${idsInOrder}.
 - Each "id" must match exactly (e.g. t1, t2).
-- Use null for correctedVersion when there is nothing to rewrite.`;
+- Use null for correctedVersion when there is nothing to rewrite.
+- Base all feedback only on the questions and answer strings in the JSON above. Do not quote, summarise, or discuss answers that were not provided in that JSON (no invented or remembered text from other sessions).`;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
