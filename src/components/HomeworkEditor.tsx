@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Group } from "./GroupEditor";
 import { EmojiPicker } from "./EmojiPicker";
+import { LinkifiedText } from "./LinkifiedText";
 
 type Student = { id: string; email: string; name: string | null };
 export type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
@@ -644,7 +645,10 @@ export function HomeworkEditor({
                       </span>
                     </div>
                     {item.description && (
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-ink/70">{item.description}</p>
+                      <LinkifiedText
+                        text={item.description}
+                        className="mt-1 whitespace-pre-wrap text-sm text-ink/70"
+                      />
                     )}
                     {parseAttachments(item).length > 0 && (
                       <p className="mt-1 text-xs text-ink/50">
@@ -962,7 +966,10 @@ export function HomeworkEditor({
                               )}
                             </div>
                             {item.description && (
-                              <p className="mt-1 whitespace-pre-wrap text-sm text-ink/50">{item.description}</p>
+                              <LinkifiedText
+                                text={item.description}
+                                className="mt-1 whitespace-pre-wrap text-sm text-ink/50"
+                              />
                             )}
                             {item.responses && item.responses.length > 0 && (
                               <div className="mt-2 rounded border border-ink/10 bg-ink/5 p-2 space-y-1">

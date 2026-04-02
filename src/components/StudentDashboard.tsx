@@ -6,6 +6,7 @@ import { ScheduleViewer } from "./ScheduleViewer";
 import { LearnEnglishAiTab } from "./LearnEnglishAiTab";
 import { WordleTab } from "./WordleTab";
 import { EmojiPicker } from "./EmojiPicker";
+import { LinkifiedText } from "./LinkifiedText";
 type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
 type HomeworkResponse = {
   id: string;
@@ -526,7 +527,10 @@ function HomeworkItem({
       {item.description && (
         <div className="mt-2 rounded-lg border border-ink/10 bg-ink/[0.04] px-3 py-2">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-ink/45">Instructions</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-ink/75">{item.description}</p>
+          <LinkifiedText
+            text={item.description}
+            className="mt-1 whitespace-pre-wrap text-sm text-ink/75"
+          />
         </div>
       )}
       {attachments.length > 0 && (
