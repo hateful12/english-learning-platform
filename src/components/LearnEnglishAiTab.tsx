@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { EXERCISE_TYPES } from "@/data/learnEnglishExerciseTypes";
+import { ExerciseTypeGlyph } from "@/components/ExerciseTypeGlyph";
 import type { StructuredExerciseFeedback, TaskFeedbackBlock } from "@/lib/exercise-feedback";
 
 const CEFR_RE = /^(A1|A2|B1|B2|C1|C2)$/i;
@@ -591,13 +592,18 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
               ex.availableSoon ? (
                 <li key={ex.id}>
                   <div
-                    className="w-full text-left rounded-xl border border-dashed border-ink/20 bg-ink/[0.03] p-4 text-ink/55 cursor-not-allowed select-none"
+                    className="flex gap-3 items-start w-full text-left rounded-xl border border-dashed border-ink/20 bg-ink/[0.03] p-4 text-ink/55 cursor-not-allowed select-none"
                     aria-label={`${ex.title}, available soon`}
                   >
-                    <span className="font-medium text-ink/70">{ex.title}</span>
-                    <span className="mt-1 block text-sm text-ink/50">{ex.description}</span>
-                    <span className="mt-2 inline-block text-xs font-semibold uppercase tracking-wide text-ink/45">
-                      Available soon
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-ink/[0.08] text-ink/40">
+                      <ExerciseTypeGlyph exerciseId={ex.id} className="h-7 w-7" />
+                    </span>
+                    <span className="min-w-0 flex-1 flex flex-col">
+                      <span className="font-medium text-ink/70">{ex.title}</span>
+                      <span className="mt-1 text-sm text-ink/50">{ex.description}</span>
+                      <span className="mt-2 inline-block text-xs font-semibold uppercase tracking-wide text-ink/45">
+                        Available soon
+                      </span>
                     </span>
                   </div>
                 </li>
@@ -607,11 +613,16 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
                     type="button"
                     onClick={() => void startExercise(ex.id)}
                     disabled={loading || !cefrLevel}
-                    className="w-full text-left rounded-xl border border-ink/12 bg-white/70 hover:bg-white hover:border-accent/30 p-4 transition-colors disabled:opacity-50"
+                    className="flex gap-3 items-start w-full text-left rounded-xl border border-ink/12 bg-white/70 hover:bg-white hover:border-accent/30 p-4 transition-colors disabled:opacity-50"
                   >
-                    <span className="font-medium text-ink">{ex.title}</span>
-                    <span className="mt-1 block text-sm text-ink/60">{ex.description}</span>
-                    <span className="mt-2 inline-block text-xs font-medium text-accent">Start →</span>
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent">
+                      <ExerciseTypeGlyph exerciseId={ex.id} className="h-7 w-7" />
+                    </span>
+                    <span className="min-w-0 flex-1 flex flex-col items-start">
+                      <span className="font-medium text-ink">{ex.title}</span>
+                      <span className="mt-1 text-sm text-ink/60">{ex.description}</span>
+                      <span className="mt-2 inline-block text-xs font-medium text-accent">Start →</span>
+                    </span>
                   </button>
                 </li>
               )
@@ -625,7 +636,17 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-accent">Your exercise</p>
-              <h4 className="mt-1 font-serif text-lg font-semibold text-ink">{active.title}</h4>
+              <div className="mt-1 flex items-center gap-2 min-w-0">
+                {active.exerciseTypeId === "speaking-prep" ? (
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent"
+                    title="Speaking — use your voice or type"
+                  >
+                    <ExerciseTypeGlyph exerciseId="speaking-prep" className="h-5 w-5" />
+                  </span>
+                ) : null}
+                <h4 className="font-serif text-lg font-semibold text-ink min-w-0">{active.title}</h4>
+              </div>
               {isBeginnerLevel && showUkrainian && ukTranslation ? (
                 <UkrainianPanel>{ukTranslation.titleUk}</UkrainianPanel>
               ) : null}
