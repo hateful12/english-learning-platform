@@ -4,13 +4,17 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { EXERCISE_TYPES } from "@/data/learnEnglishExerciseTypes";
 import type { StructuredExerciseFeedback, TaskFeedbackBlock } from "@/lib/exercise-feedback";
 
-const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
-
 const CEFR_RE = /^(A1|A2|B1|B2|C1|C2)$/i;
 
 function normalizeLevel(raw: string | null | undefined): string {
   const t = (raw ?? "").trim().toUpperCase();
   return CEFR_RE.test(t) ? t : "B1";
+}
+
+/** CEFR level only when the teacher set a valid band; students cannot override. */
+function levelFromTeacher(raw: string | null | undefined): string | null {
+  const t = (raw ?? "").trim().toUpperCase();
+  return CEFR_RE.test(t) ? t : null;
 }
 
 type Task = { id: string; question: string };
@@ -160,7 +164,6 @@ function ExerciseFeedbackPanel({
 }
 
 export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | null }) {
-  const [manualLevel, setManualLevel] = useState<string | null>(null);
   const [focusNote, setFocusNote] = useState("");
   const [active, setActive] = useState<ActiveExercise | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -183,13 +186,8 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   const fileInputRef = useRef<HTMLInputElement>(null);
   const generateRequestIdRef = useRef(0);
 
-  const teacherLevel = normalizeLevel(assignedLevel);
-  const levelInUse = manualLevel ?? teacherLevel;
-
-  const teacherLabel =
-    assignedLevel && CEFR_RE.test(assignedLevel.trim()) ? assignedLevel.trim().toUpperCase() : null;
-
-  const isBeginnerLevel = levelInUse === "A1" || levelInUse === "A2";
+  const cefrLevel = levelFromTeacher(assignedLevel);
+  const isBeginnerLevel = cefrLevel === "A1" || cefrLevel === "A2";
 
   useEffect(() => {
     if (!isBeginnerLevel) {
@@ -317,6 +315,11 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   async function startExercise(exerciseTypeId: string) {
     const def = EXERCISE_TYPES.find((e) => e.id === exerciseTypeId);
     if (!def) return;
+    const cefr = levelFromTeacher(assignedLevel);
+    if (!cefr) {
+      setError("Your teacher must set your English level before you can start AI practice.");
+      return;
+    }
     const requestId = ++generateRequestIdRef.current;
     stopRecording();
     setError("");
@@ -336,7 +339,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
         body: JSON.stringify({
           phase: "generate",
           exerciseId: def.id,
-          level: levelInUse,
+          level: cefr,
           exerciseFocus: def.focus,
           focusNote: focusNote.trim() || undefined,
         }),
@@ -383,7 +386,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
       }
       setActive({
         exerciseTypeId: def.id,
-        level: typeof data.level === "string" ? normalizeLevel(data.level) : levelInUse,
+        level: typeof data.level === "string" ? normalizeLevel(data.level) : cefr,
         title: data.title,
         introduction: data.introduction,
         tasks,
@@ -412,7 +415,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
         credentials: "same-origin",
         body: JSON.stringify({
           phase: "translateUk",
-          level: levelInUse,
+          level: active.level,
           title: active.title,
           introduction: active.introduction,
           tasks: active.tasks,
@@ -552,53 +555,32 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
       <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-4 md:p-5">
         <h3 className="font-serif text-lg font-semibold text-ink">AI practice exercises</h3>
         <p className="mt-2 text-sm text-ink/70 max-w-2xl">
-          Short tasks matched to your level. Do them in a few minutes, then get clear feedback. Your teacher can set
-          your level; you can adjust it here if you like.
+          Short tasks matched to the level your teacher chose for you. Do them in a few minutes, then get clear feedback.
         </p>
-        <div className="mt-5 grid grid-cols-1 md:grid-cols-12 md:gap-x-8 gap-y-5">
-          <div className="md:col-span-5 flex flex-col gap-2 min-w-0">
-            <label htmlFor="learn-level" className="text-xs font-medium text-ink/65 leading-tight">
-              Level for exercises
-            </label>
-            <select
-              id="learn-level"
-              value={levelInUse}
-              onChange={(e) => setManualLevel(e.target.value)}
-              disabled={loading}
-              className="input text-sm w-full min-h-[2.5rem] py-2"
-            >
-              {LEVELS.map((lv) => (
-                <option key={lv} value={lv}>
-                  {lv}
-                  {teacherLabel === lv ? " (teacher)" : ""}
-                </option>
-              ))}
-            </select>
-            {teacherLabel ? (
-              <button
-                type="button"
-                onClick={() => setManualLevel(null)}
-                disabled={loading || manualLevel === null}
-                className="self-start text-left text-xs font-medium text-ink/85 hover:text-ink underline-offset-2 hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed pt-0.5 pb-0.5"
-              >
-                Use teacher level ({teacherLabel})
-              </button>
-            ) : null}
-          </div>
-          <div className="md:col-span-7 flex flex-col gap-2 min-w-0">
-            <label htmlFor="learn-focus" className="text-xs font-medium text-ink/65 leading-tight">
-              Optional: what do you want to practise?
-            </label>
-            <input
-              id="learn-focus"
-              type="text"
-              value={focusNote}
-              onChange={(e) => setFocusNote(e.target.value.slice(0, 400))}
-              disabled={loading || !!active}
-              placeholder="e.g. past simple, emails, travel vocabulary"
-              className="input text-sm w-full min-h-[2.5rem] py-2"
-            />
-          </div>
+        {cefrLevel ? (
+          <p className="mt-3 rounded-lg border border-ink/10 bg-white/60 px-3 py-2 text-sm text-ink/85">
+            <span className="font-medium text-ink">Your level </span>
+            <span className="font-semibold text-accent">{cefrLevel}</span>
+            <span className="text-ink/60"> (set by your teacher — you can’t change it here)</span>
+          </p>
+        ) : (
+          <p className="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-200/90 rounded-lg px-3 py-2">
+            Your teacher hasn’t set your English level yet. Ask them to set your CEFR level so you can start AI practice.
+          </p>
+        )}
+        <div className="mt-4 max-w-2xl flex flex-col gap-2">
+          <label htmlFor="learn-focus" className="text-xs font-medium text-ink/65 leading-tight">
+            Optional: what do you want to practise?
+          </label>
+          <input
+            id="learn-focus"
+            type="text"
+            value={focusNote}
+            onChange={(e) => setFocusNote(e.target.value.slice(0, 400))}
+            disabled={loading || !!active || !cefrLevel}
+            placeholder="e.g. past simple, emails, travel vocabulary"
+            className="input text-sm w-full min-h-[2.5rem] py-2"
+          />
         </div>
       </div>
 
@@ -625,7 +607,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
                   <button
                     type="button"
                     onClick={() => void startExercise(ex.id)}
-                    disabled={loading}
+                    disabled={loading || !cefrLevel}
                     className="w-full text-left rounded-xl border border-ink/12 bg-white/70 hover:bg-white hover:border-accent/30 p-4 transition-colors disabled:opacity-50"
                   >
                     <span className="font-medium text-ink">{ex.title}</span>
