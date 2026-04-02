@@ -150,18 +150,24 @@ function HomeworkSubmit({
   }
 
   return (
-    <div className="mt-3">
-      <label className="block text-sm font-medium text-ink/80 mb-1">Your response</label>
+    <div className="mt-4 rounded-xl border border-ink/15 bg-gradient-to-b from-ink/[0.03] to-transparent p-4 shadow-sm">
+      <div className="mb-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink/45">Hand in your work</p>
+        <p className="mt-0.5 text-sm text-ink/65">
+          Write your answer below and attach any photos, PDFs, or audio your teacher requested.
+        </p>
+      </div>
+      <label className="block text-sm font-semibold text-ink mb-1">Written answer</label>
       <textarea
         value={response}
         onChange={(e) => setResponse(e.target.value)}
-        placeholder="Type your answer here..."
-        className="input min-h-[100px] resize-y w-full"
-        rows={3}
+        placeholder="Type your homework answer or notes here…"
+        className="input min-h-[120px] resize-y w-full"
+        rows={4}
         disabled={submitting}
       />
-      <div className="mt-2 flex flex-wrap gap-2 items-center">
-        <EmojiPicker onInsert={(e) => setResponse((prev) => prev + e)} />
+      <p className="mt-3 text-xs font-medium text-ink/50">Attachments</p>
+      <div className="mt-1.5 flex flex-wrap gap-2 items-center">
         <input
           ref={fileInputRef}
           type="file"
@@ -174,20 +180,27 @@ function HomeworkSubmit({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading || submitting}
-          className="flex items-center gap-1.5 rounded-md bg-ink/5 px-3 py-1.5 text-sm text-ink/80 hover:bg-ink/10 disabled:opacity-50"
+          className="flex items-center gap-2 rounded-lg border-2 border-ink/20 bg-white/60 px-3.5 py-2 text-sm font-medium text-ink shadow-sm hover:border-accent/40 hover:bg-accent/5 disabled:opacity-50"
         >
-          {uploading ? "Uploading…" : "📎 Add photo or file"}
+          {uploading ? "Uploading…" : (
+            <>
+              <span className="text-base" aria-hidden>📎</span>
+              Attach files for this assignment
+            </>
+          )}
         </button>
+        <span className="text-xs text-ink/45">Images, PDF, Office docs, zip, audio</span>
+        <EmojiPicker onInsert={(e) => setResponse((prev) => prev + e)} />
         {attachments.length > 0 && (
-          <ul className="flex flex-wrap gap-2">
+          <ul className="flex flex-wrap gap-2 basis-full">
             {attachments.map((a, i) => (
-              <li key={a.url} className="flex items-center gap-1 rounded bg-ink/5 px-2 py-1 text-xs">
-                <span className="text-ink/70 truncate max-w-[120px]">{a.name}</span>
+              <li key={a.url} className="flex items-center gap-1 rounded-md border border-ink/10 bg-ink/5 px-2 py-1 text-xs">
+                <span className="text-ink/70 truncate max-w-[140px]">{a.name}</span>
                 <button
                   type="button"
                   onClick={() => setAttachments((p) => p.filter((_, j) => j !== i))}
                   className="text-red-500 hover:text-red-700"
-                  aria-label="Remove"
+                  aria-label="Remove attachment"
                 >
                   ×
                 </button>
@@ -200,9 +213,13 @@ function HomeworkSubmit({
         type="button"
         onClick={() => onSubmit(homeworkId, response, attachments)}
         disabled={submitting}
-        className="mt-2 btn-primary"
+        className="mt-4 btn-primary font-semibold"
       >
-        {submitting ? "Submitting…" : initialResponse ? "Update response" : "Submit"}
+        {submitting
+          ? "Turning in…"
+          : initialResponse
+            ? "Update your submission"
+            : "Turn in assignment"}
       </button>
     </div>
   );
@@ -429,10 +446,13 @@ function HomeworkItem({
   return (
     <li id={`student-hw-${item.id}`} className="border-b border-ink/5 pb-5 last:border-0 last:pb-0 scroll-mt-24">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-medium text-ink">{item.title}</h3>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/40">Assignment</p>
+          <h3 className="font-semibold text-ink leading-snug">{item.title}</h3>
+        </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-ink/40">
-            {new Date(item.createdAt).toLocaleDateString()}
+          <span className="text-xs text-ink/40" title="Assigned">
+            Assigned {new Date(item.createdAt).toLocaleDateString()}
           </span>
           {readOnly && onDelete && (
             <button
@@ -450,7 +470,10 @@ function HomeworkItem({
         </div>
       </div>
       {item.description && (
-        <p className="mt-1 whitespace-pre-wrap text-sm text-ink/70">{item.description}</p>
+        <div className="mt-2 rounded-lg border border-ink/10 bg-ink/[0.04] px-3 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink/45">Instructions</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-ink/75">{item.description}</p>
+        </div>
       )}
       {attachments.length > 0 && (
         <div className="mt-2 space-y-2">
@@ -488,7 +511,7 @@ function HomeworkItem({
       )}
       {readOnly && myResponse && (myResponse.response || parseStudentResponseAttachments(myResponse.studentResponseAttachments).length > 0) && (
         <div className="mt-3">
-          <p className="text-xs font-medium text-ink/50 mb-1">Your response</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink/45 mb-1">Your submission</p>
           {myResponse.response && <p className="whitespace-pre-wrap text-sm text-ink/70">{myResponse.response}</p>}
           {parseStudentResponseAttachments(myResponse.studentResponseAttachments).map((a) => (
             <div key={a.url} className="mt-2 rounded border border-ink/10 bg-ink/5 p-2">
