@@ -27,6 +27,75 @@ export function placeholdersInTemplate(template: string): string[] {
   return out;
 }
 
+/** Human-readable label for a `{Token}` placeholder (for form fields). */
+export function friendlyPlaceholderLabel(placeholderToken: string): string {
+  const inner =
+    placeholderToken.startsWith("{") && placeholderToken.endsWith("}")
+      ? placeholderToken.slice(1, -1).trim()
+      : placeholderToken.trim();
+
+  const labels: Record<string, string> = {
+    "Your Word": "Word or phrase you want to learn",
+    "Your Phrasal Verb": "Phrasal verb (e.g. give up)",
+    "Your Sentence": "Your sentence",
+    "Your Idiom": "Idiom or expression",
+    "Your Grammar Topic": "Grammar topic (e.g. present perfect)",
+    "TV Show Episode": "TV show or episode name",
+    "Your Quote": "The quote or line",
+    "Quote or Reference": "The reference you heard",
+    "Movie or TV Show Title": "Movie or TV show title",
+    "Your Word or Phrase": "Word or phrase in your text",
+    "Your Excerpt": "Full sentence or short passage",
+    "Your Quotation": "The quotation or hard sentence",
+    "Your Word A": "First word to compare",
+    "Your Word B": "Second word to compare",
+    "Your First Text": "First wording option",
+    "Your Second Text": "Second wording option",
+    "Your Sentence or Paragraph": "Your text to correct",
+    "Your Passage": "Text to clean up (e.g. for reading aloud)",
+    "Your Situation": "Situation (e.g. team meeting at work)",
+    Company: "Company name",
+    "Interview Context": "Interview context (role, round, who you meet)",
+    "Clarification and Details": "What you want in the questions (style, difficulty)",
+    "Your Name": "Your first name (or how you want to be called)",
+    "Your Topic": "Topic to talk about",
+    "Your Role": "Job title you’re applying for",
+    "Company Culture": "Company culture (optional — or write “not sure”)",
+    "Your Level": "Your English level (e.g. B1, intermediate)",
+    "Idiom 1": "First idiom",
+    "Idiom 2": "Second idiom",
+    "Vocabulary 1": "First word or phrase",
+    "Vocabulary 2": "Second word or phrase",
+    "Video Transcript": "Paste the video transcript (or notes)",
+    "Question Number": "TOEFL task (e.g. Question 1)",
+    "Your General Topic": "General topic for the task",
+    "Your Sound 1": "Sound 1 (e.g. sh, th)",
+    "Your Word 1": "Example word 1",
+    "Your Word 2": "Example word 2",
+    "Your Sound 2": "Sound 2 (e.g. th as in this)",
+    "Your Sound 3": "Sound 3",
+    "Your Sound 4": "Sound 4",
+    "Your Text": "Your text",
+    "Your Email": "Your email text",
+    "Adjectives that Describe Your Tone": "Tone you want (e.g. friendly, formal)",
+    "Desired Style": "Style (e.g. short paragraphs)",
+    "Main Goal": "Main goal of the text",
+    "Your Writing Sample": "Your writing to assess (longer is better)",
+  };
+
+  return labels[inner] ?? inner;
+}
+
+/** Replace each `{Key}` in template with values; keys must match tokens from `placeholdersInTemplate`. */
+export function applyTemplateValues(template: string, values: Record<string, string>): string {
+  let out = template;
+  for (const [token, raw] of Object.entries(values)) {
+    const v = raw ?? "";
+    out = out.split(token).join(v);
+  }
+  return out;
+}
+
 export const LEARN_ENGLISH_AI_PROMPTS: LearnEnglishAiPrompt[] = [
   {
     id: "vocabulary-word-profile",
