@@ -3,7 +3,12 @@ import { prisma } from "@/lib/db";
 import { getStudentId } from "@/lib/auth";
 import OpenAI from "openai";
 import { isAssessmentSkill } from "@/lib/assessment-skills";
-import { getOpenAiApiKey, openAiInvalidKeyMessage, openAiNotConfiguredMessage } from "@/lib/openai-key";
+import {
+  getOpenAiApiKey,
+  isOpenAiAuthFailure,
+  openAiInvalidKeyMessage,
+  openAiNotConfiguredMessage,
+} from "@/lib/openai-key";
 
 function buildMcqPrompt(skill: "reading" | "listening", level: string): string {
   const skillLabel = skill === "reading" ? "reading comprehension" : "listening comprehension";
@@ -253,7 +258,7 @@ export async function POST(request: NextRequest) {
         { status: 503 }
       );
     }
-    if (status === 401) {
+    if (isOpenAiAuthFailure(err)) {
       return NextResponse.json({ error: openAiInvalidKeyMessage() }, { status: 503 });
     }
     const message = err instanceof Error ? err.message : String(err);

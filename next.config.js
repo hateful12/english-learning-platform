@@ -1,3 +1,9 @@
+const { loadEnvConfig } = require("@next/env");
+
+const projectDir = __dirname;
+const isDev = process.env.NODE_ENV !== "production";
+loadEnvConfig(projectDir, isDev, console, isDev);
+
 /** @type {import('next').NextConfig} */
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
