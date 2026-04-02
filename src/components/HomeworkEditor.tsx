@@ -433,8 +433,12 @@ export function HomeworkEditor({
       const failed = typeof data.failed === "number" ? data.failed : 0;
       const recipientCount = typeof data.recipientCount === "number" ? data.recipientCount : sent + failed;
       if (failed > 0) {
+        const hint =
+          typeof (data as { firstError?: string }).firstError === "string"
+            ? ` ${(data as { firstError: string }).firstError}`
+            : "";
         alert(
-          `Sent ${sent} of ${recipientCount} email(s). ${failed} failed — check the server terminal and Gmail / .env settings.`
+          `Sent ${sent} of ${recipientCount} email(s). ${failed} failed.${hint} Check Gmail app password and GMAIL_USER on the server (.env or .env.local), then restart PM2.`
         );
       } else {
         alert(`Notification sent to ${sent} student${sent === 1 ? "" : "s"}.`);

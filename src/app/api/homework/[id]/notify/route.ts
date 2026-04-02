@@ -23,5 +23,6 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     recipientCount: result.recipientCount,
     sent: result.sent,
     failed: result.failed,
+    ...(result.failed > 0 && result.firstError ? { firstError: result.firstError } : {}),
   });
 }

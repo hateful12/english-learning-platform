@@ -208,7 +208,7 @@ export async function notifyStudentsNewHomework(args: {
   groupId: string | null;
   /** If set, replaces the default “You have new homework…” intro. */
   leadHtml?: string;
-}): Promise<{ recipientCount: number; sent: number; failed: number }> {
+}): Promise<{ recipientCount: number; sent: number; failed: number; firstError?: string }> {
   const ids = await collectStudentIdsForHomework({
     studentId: args.studentId,
     groupId: args.groupId,
@@ -223,6 +223,7 @@ export async function notifyStudentsNewHomework(args: {
   const baseUrl = await getAppBaseUrl();
   let sent = 0;
   let failed = 0;
+  let firstError: string | undefined;
 
   const lead =
     args.leadHtml ??
@@ -251,18 +252,19 @@ export async function notifyStudentsNewHomework(args: {
       sent++;
     } else {
       failed++;
+      if (!firstError) firstError = result.error;
       console.error("[homework-notify-email] failed", s.id, s.email, result.error);
     }
   }
 
-  return { recipientCount: students.length, sent, failed };
+  return { recipientCount: students.length, sent, failed, ...(firstError ? { firstError } : {}) };
 }
 
 /** Load homework from DB and send the same notification email as on create (for manual “Notify” from teacher UI). */
 export async function notifyHomeworkById(
   homeworkId: string
 ): Promise<
-  | { ok: true; recipientCount: number; sent: number; failed: number }
+  | { ok: true; recipientCount: number; sent: number; failed: number; firstError?: string }
   | { ok: false; error: string }
 > {
   const hw = await prisma.homework.findUnique({
