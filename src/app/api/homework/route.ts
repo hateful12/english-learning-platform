@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { isTeacherLoggedIn, getStudentId } from "@/lib/auth";
 import { notifyStudentsNewHomework, scheduleRemindersForNewHomework } from "@/lib/homework-reminders";
 
+export const runtime = "nodejs";
+
 export async function GET() {
   try {
     const teacher = await isTeacherLoggedIn();

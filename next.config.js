@@ -22,7 +22,7 @@ const securityHeaders = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // unsafe-inline/eval required by Next.js dev mode
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob:",
+      "img-src 'self' data: blob: https://loremflickr.com https://www.loremflickr.com https://*.staticflickr.com",
       "media-src 'self' blob:",
       "font-src 'self'",
       "connect-src 'self'",
@@ -32,7 +32,9 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  // Nodemailer uses Node APIs; don’t let webpack bundle it for API routes
   experimental: {
+    serverComponentsExternalPackages: ["nodemailer"],
     serverActions: {
       bodySizeLimit: "26mb", // allow homework uploads up to 25 MB
     },
