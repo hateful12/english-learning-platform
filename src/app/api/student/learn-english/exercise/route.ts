@@ -1,9 +1,10 @@
 import fs from "fs";
 import path from "path";
+import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { getStudentId } from "@/lib/auth";
-import { parseStructuredFeedback } from "@/lib/exercise-feedback";
+import { parseStructuredFeedback, type StructuredExerciseFeedback } from "@/lib/exercise-feedback";
 import {
   createAssessmentOpenAI,
   getOpenAiApiKey,
@@ -44,6 +45,55 @@ async function transcribeAudioFile(openai: OpenAI, filePath: string): Promise<st
     model: "whisper-1",
   });
   return (transcription.text ?? "").trim();
+}
+
+function stripAsteriskBoldForSpeech(s: string): string {
+  return s.replace(/\*\*([^*]+)\*\*/g, "$1");
+}
+
+/** One continuous Ukrainian script for OpenAI TTS (student hears tutor feedback in Ukrainian). */
+async function buildUkrainianFeedbackSpeechScript(
+  openai: OpenAI,
+  structured: StructuredExerciseFeedback
+): Promise<string | null> {
+  const payload = {
+    summary: stripAsteriskBoldForSpeech(structured.summary),
+    tasks: structured.tasks.map((t) => ({
+      id: t.id,
+      feedback: stripAsteriskBoldForSpeech(t.feedback),
+      tip: stripAsteriskBoldForSpeech(t.tip),
+      correctedVersion: t.correctedVersion ? stripAsteriskBoldForSpeech(t.correctedVersion) : null,
+    })),
+  };
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content:
+          "You output plain Ukrainian text only: no title line, no markdown, no JSON. Suitable for polite informal 'ти' with a learner.",
+      },
+      {
+        role: "user",
+        content: `Перетвори цей англомовний відгук репетитора з англійської на один суцільний текст українською для озвучування (синтез мовлення). Стиль: тепло, підтримуюче, звертайся на «ти». Короткі речення, природні звʼязки («спочатку», «також», «наприклад»). Для кожного завдання коротко озвуч основне; номери можна як «завдання один», «завдання два» або за id. Якщо треба залишити англійський приклад — вбудуй коротко, наприклад: скажи тоді: hello. Без списків з римками; без зірочок. Максимум 3800 символів.\n\nJSON:\n${JSON.stringify(payload)}`,
+      },
+    ],
+    temperature: 0.35,
+    max_tokens: 2200,
+  });
+  const t = completion.choices[0]?.message?.content?.trim() ?? "";
+  return t.length > 0 ? t.slice(0, 4096) : null;
+}
+
+async function synthesizeUkrainianFeedbackMp3(openai: OpenAI, ukrainianText: string, filePath: string): Promise<void> {
+  const speech = await openai.audio.speech.create({
+    model: "tts-1",
+    voice: "nova",
+    input: ukrainianText.slice(0, 4096),
+    response_format: "mp3",
+  });
+  const buf = Buffer.from(await speech.arrayBuffer());
+  await fs.promises.writeFile(filePath, buf);
 }
 
 function parseGeneratedExercise(
@@ -460,11 +510,26 @@ Rules:
 
       const structured = parseStructuredFeedback(raw);
       if (structured) {
-        return NextResponse.json({ structured, feedback: null });
+        let feedbackAudioUkUrl: string | null = null;
+        const safeSid = studentId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || "st";
+        try {
+          const script = await buildUkrainianFeedbackSpeechScript(openai, structured);
+          if (script) {
+            const dir = path.join(process.cwd(), "public", "uploads", "homework");
+            await fs.promises.mkdir(dir, { recursive: true });
+            const fname = `fbuk-${safeSid}-${Date.now()}-${randomBytes(6).toString("hex")}.mp3`;
+            const fullPath = path.join(dir, fname);
+            await synthesizeUkrainianFeedbackMp3(openai, script, fullPath);
+            feedbackAudioUkUrl = `/uploads/homework/${fname}`;
+          }
+        } catch (e) {
+          console.error("learn-english feedback Ukrainian audio", e);
+        }
+        return NextResponse.json({ structured, feedback: null, feedbackAudioUkUrl });
       }
 
       console.error("learn-english exercise feedback JSON parse failed:", raw.slice(0, 500));
-      return NextResponse.json({ structured: null, feedback: raw });
+      return NextResponse.json({ structured: null, feedback: raw, feedbackAudioUkUrl: null });
     }
 
     if (phase === "translateUk") {

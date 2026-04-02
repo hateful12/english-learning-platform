@@ -171,6 +171,8 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   const [audioByTask, setAudioByTask] = useState<Record<string, AudioMeta | null>>({});
   const [feedbackStructured, setFeedbackStructured] = useState<StructuredExerciseFeedback | null>(null);
   const [feedbackPlain, setFeedbackPlain] = useState<string | null>(null);
+  /** OpenAI TTS: Ukrainian voice summary of structured feedback. */
+  const [feedbackAudioUkUrl, setFeedbackAudioUkUrl] = useState<string | null>(null);
   /** Answers copied at submit time so the feedback view cannot show stale text after a new round. */
   const [feedbackAnswersSnapshot, setFeedbackAnswersSnapshot] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -210,6 +212,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
     setAudioByTask({});
     setFeedbackStructured(null);
     setFeedbackPlain(null);
+    setFeedbackAudioUkUrl(null);
     setFeedbackAnswersSnapshot(null);
     setUkTranslation(null);
     setShowUkrainian(false);
@@ -326,6 +329,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
     setError("");
     setFeedbackStructured(null);
     setFeedbackPlain(null);
+    setFeedbackAudioUkUrl(null);
     setFeedbackAnswersSnapshot(null);
     setUkTranslation(null);
     setShowUkrainian(false);
@@ -490,6 +494,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
         error?: unknown;
         structured?: unknown;
         feedback?: unknown;
+        feedbackAudioUkUrl?: unknown;
       } = {};
       try {
         data = JSON.parse(rawText) as typeof data;
@@ -502,25 +507,34 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
         );
       }
 
+      const audioUk =
+        typeof data.feedbackAudioUkUrl === "string" && data.feedbackAudioUkUrl.startsWith("/uploads/homework/")
+          ? data.feedbackAudioUkUrl
+          : null;
+
       if (data.structured && typeof data.structured === "object") {
         const s = data.structured as StructuredExerciseFeedback;
         if (typeof s.summary === "string" && Array.isArray(s.tasks) && s.tasks.length > 0) {
           setFeedbackAnswersSnapshot({ ...answersForRequest });
           setFeedbackStructured(s);
           setFeedbackPlain(null);
+          setFeedbackAudioUkUrl(audioUk);
         } else {
           setFeedbackAnswersSnapshot({ ...answersForRequest });
           setFeedbackStructured(null);
           setFeedbackPlain(typeof data.feedback === "string" ? data.feedback : rawText);
+          setFeedbackAudioUkUrl(null);
         }
       } else if (typeof data.feedback === "string" && data.feedback.trim()) {
         setFeedbackAnswersSnapshot({ ...answersForRequest });
         setFeedbackStructured(null);
         setFeedbackPlain(data.feedback);
+        setFeedbackAudioUkUrl(null);
       } else {
         setFeedbackAnswersSnapshot({ ...answersForRequest });
         setFeedbackStructured(null);
         setFeedbackPlain("Could not load formatted feedback. Try “Check my answers” again.");
+        setFeedbackAudioUkUrl(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
@@ -833,6 +847,17 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
       {active && hasFeedback && (
         <div className="rounded-xl border border-ink/10 bg-white/80 p-4 md:p-5 space-y-4">
           <h4 className="font-serif text-lg font-semibold text-ink">Feedback</h4>
+          {feedbackAudioUkUrl ? (
+            <div className="rounded-xl border border-sky-200/80 bg-sky-50/60 p-4 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-sky-900/75">
+                Голосовий відгук репетитора українською
+              </p>
+              <p className="text-xs text-ink/65">
+                Те саме, що нижче англійською, коротко озвучено для зручності. Текст українською згенеровано автоматично.
+              </p>
+              <audio src={feedbackAudioUkUrl} controls className="w-full max-w-lg h-10" preload="metadata" />
+            </div>
+          ) : null}
           <ExerciseFeedbackPanel
             structured={feedbackStructured}
             plain={feedbackPlain}
