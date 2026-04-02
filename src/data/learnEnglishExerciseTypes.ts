@@ -34,8 +34,9 @@ export const EXERCISE_TYPES: ExerciseTypeDef[] = [
   {
     id: "speaking-prep",
     title: "Speaking prep",
-    description: "Answer prompts you could practise saying out loud.",
-    focus: "spoken English practice in written form: clear answers, linking ideas, natural phrasing",
+    description: "Speak or type: record your voice, upload audio, or write your answers.",
+    focus:
+      "spoken English: short prompts the student can answer aloud; they may submit voice recordings (transcribed for feedback) or text",
   },
   {
     id: "mixed",

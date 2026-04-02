@@ -1,5 +1,9 @@
+import fs from "fs";
+import path from "path";
 import { NextRequest, NextResponse } from "next/server";
+import OpenAI from "openai";
 import { getStudentId } from "@/lib/auth";
+import { parseStructuredFeedback } from "@/lib/exercise-feedback";
 import {
   createAssessmentOpenAI,
   getOpenAiApiKey,
@@ -23,6 +27,24 @@ function stripJsonFence(s: string): string {
 }
 
 type Task = { id: string; question: string };
+
+function resolveHomeworkUploadFilePath(publicUrl: string): string | null {
+  if (typeof publicUrl !== "string" || !publicUrl.startsWith("/uploads/homework/")) return null;
+  const base = path.basename(publicUrl);
+  if (!base || base.includes("..")) return null;
+  const dir = path.join(process.cwd(), "public", "uploads", "homework");
+  const full = path.resolve(path.join(dir, base));
+  if (!full.startsWith(path.resolve(dir))) return null;
+  return full;
+}
+
+async function transcribeAudioFile(openai: OpenAI, filePath: string): Promise<string> {
+  const transcription = await openai.audio.transcriptions.create({
+    file: fs.createReadStream(filePath),
+    model: "whisper-1",
+  });
+  return (transcription.text ?? "").trim();
+}
 
 function parseGeneratedExercise(content: string): { title: string; introduction: string; tasks: Task[] } | null {
   const raw = stripJsonFence(content);
@@ -56,11 +78,21 @@ function parseGeneratedExercise(content: string): { title: string; introduction:
   }
 }
 
-function buildGenerateUserMessage(level: string, exerciseFocus: string, focusNote: string | undefined): string {
+function buildGenerateUserMessage(
+  level: string,
+  exerciseFocus: string,
+  focusNote: string | undefined,
+  exerciseId: string
+): string {
+  const speakingNote =
+    exerciseId === "speaking-prep"
+      ? "\nThis is speaking practice: use prompts the student can answer in 20–40 seconds of speech (opinion, describe, role-play cue). They may answer by voice recording or typing.\n"
+      : "";
+
   return `Create short English practice for one student at CEFR ${level}.
 
 Exercise type / focus: ${exerciseFocus}
-${focusNote?.trim() ? `Student note (honour if sensible): ${focusNote.trim()}\n` : ""}
+${speakingNote}${focusNote?.trim() ? `Student note (honour if sensible): ${focusNote.trim()}\n` : ""}
 
 Rules:
 - Exactly 4 tasks (not 3, not 5).
@@ -110,7 +142,10 @@ export async function POST(request: NextRequest) {
             content:
               "You write concise English learning exercises. Output only valid JSON as requested. No markdown.",
           },
-          { role: "user", content: buildGenerateUserMessage(level, exerciseFocus, focusNote || undefined) },
+          {
+            role: "user",
+            content: buildGenerateUserMessage(level, exerciseFocus, focusNote || undefined, exerciseId),
+          },
         ],
         temperature: 0.75,
         max_tokens: 1400,
@@ -142,9 +177,20 @@ export async function POST(request: NextRequest) {
         typeof body?.introduction === "string" ? body.introduction.trim().slice(0, 2000) : "";
       const tasks = body?.tasks;
       const answers = body?.answers;
+      const audioUrlsRaw = body?.audioUrls;
 
       if (!title || !introduction || !Array.isArray(tasks) || !answers || typeof answers !== "object") {
         return NextResponse.json({ error: "Invalid exercise payload" }, { status: 400 });
+      }
+
+      const audioUrls: Record<string, string> = {};
+      if (audioUrlsRaw && typeof audioUrlsRaw === "object" && !Array.isArray(audioUrlsRaw)) {
+        for (const [k, v] of Object.entries(audioUrlsRaw as Record<string, unknown>)) {
+          const key = k.trim();
+          if (typeof v === "string" && v.startsWith("/uploads/homework/")) {
+            audioUrls[key] = v;
+          }
+        }
       }
 
       const payload: { id: string; question: string; answer: string }[] = [];
@@ -156,7 +202,29 @@ export async function POST(request: NextRequest) {
         const aid = id.trim();
         if (!aid) continue;
         const ansRaw = (answers as Record<string, unknown>)[aid];
-        const answer = typeof ansRaw === "string" ? ansRaw.trim().slice(0, 8000) : "";
+        let answer = typeof ansRaw === "string" ? ansRaw.trim().slice(0, 8000) : "";
+
+        const audioPath = audioUrls[aid] ? resolveHomeworkUploadFilePath(audioUrls[aid]) : null;
+        if (audioPath) {
+          try {
+            await fs.promises.access(audioPath, fs.constants.R_OK);
+            const tx = await transcribeAudioFile(openai, audioPath);
+            if (tx) {
+              answer = answer
+                ? `[Voice answer, transcribed]\n${tx}\n\n[Written note]\n${answer}`
+                : `[Voice answer, transcribed]\n${tx}`;
+            } else if (!answer) {
+              answer =
+                "(Voice recording had no clear speech — please record again or type your answer.)";
+            }
+          } catch (e) {
+            console.error("learn-english exercise transcribe", e);
+            answer = answer
+              ? `${answer}\n\n(Voice file could not be transcribed — feedback uses your text only.)`
+              : "(Voice file could not be transcribed — please type your answer or try another recording.)";
+          }
+        }
+
         payload.push({ id: aid, question: question.trim(), answer: answer || "(no answer)" });
       }
 
@@ -164,22 +232,33 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "No tasks to review" }, { status: 400 });
       }
 
+      const idsInOrder = payload.map((p) => p.id).join(", ");
+
       const userContent = `You are a supportive English teacher. Student level: CEFR ${level}.
 
 Exercise title: ${title}
 Introduction you gave the student: ${introduction}
 
-For EACH task, use this format:
+Tasks and student answers (JSON). Voice answers are already transcribed into the answer text where applicable.
+${JSON.stringify(payload)}
 
-**Task [id]**  
-- Feedback: (what worked, what to improve)  
-- If useful, a **corrected or stronger version** (use **bold** only for changed words or phrases)  
-- Tip: (one short tip)
+Return ONLY valid JSON (no markdown code fences), exactly this shape:
+{
+  "summary": "2-3 sentences of overall encouragement, plain text only",
+  "tasks": [
+    {
+      "id": "t1",
+      "feedback": "what worked and what to improve — plain text, no markdown",
+      "tip": "one short practical tip",
+      "correctedVersion": "optional: show an improved version with **double-asterisk bold** only around changed words; use null if not applicable"
+    }
+  ]
+}
 
-End with a short encouraging summary (2–3 sentences).
-
-Tasks and student answers as JSON:
-${JSON.stringify(payload)}`;
+Rules:
+- Include exactly one object in "tasks" per task above, in this order: ${idsInOrder}.
+- Each "id" must match exactly (e.g. t1, t2).
+- Use null for correctedVersion when there is nothing to rewrite.`;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -187,20 +266,26 @@ ${JSON.stringify(payload)}`;
           {
             role: "system",
             content:
-              "You give clear, kind feedback on learner English. Follow the user’s format. Be specific and level-appropriate.",
+              "You give clear, kind feedback on learner English. Output only valid JSON as requested. Be specific and level-appropriate.",
           },
           { role: "user", content: userContent },
         ],
         temperature: 0.35,
-        max_tokens: 3000,
+        max_tokens: 3500,
       });
 
-      const feedback = completion.choices[0]?.message?.content?.trim();
-      if (!feedback) {
+      const raw = completion.choices[0]?.message?.content?.trim() ?? "";
+      if (!raw) {
         return NextResponse.json({ error: "No feedback returned. Try again." }, { status: 502 });
       }
 
-      return NextResponse.json({ feedback });
+      const structured = parseStructuredFeedback(raw);
+      if (structured) {
+        return NextResponse.json({ structured, feedback: null });
+      }
+
+      console.error("learn-english exercise feedback JSON parse failed:", raw.slice(0, 500));
+      return NextResponse.json({ structured: null, feedback: raw });
     }
 
     return NextResponse.json({ error: "Invalid phase. Use generate or feedback." }, { status: 400 });

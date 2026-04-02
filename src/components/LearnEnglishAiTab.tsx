@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EXERCISE_TYPES } from "@/data/learnEnglishExerciseTypes";
+import type { StructuredExerciseFeedback, TaskFeedbackBlock } from "@/lib/exercise-feedback";
 
 const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 
@@ -22,15 +23,112 @@ type ActiveExercise = {
   tasks: Task[];
 };
 
+type AudioMeta = { url: string; name: string };
+
+function TextWithBold({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const m = part.match(/^\*\*([^*]+)\*\*$/);
+        if (m) {
+          return (
+            <strong key={i} className="font-semibold text-ink">
+              {m[1]}
+            </strong>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+function ExerciseFeedbackPanel({
+  structured,
+  plain,
+  taskOrder,
+}: {
+  structured: StructuredExerciseFeedback | null;
+  plain: string | null;
+  taskOrder: { id: string }[];
+}) {
+  if (structured) {
+    const ordered: TaskFeedbackBlock[] = [];
+    for (const t of taskOrder) {
+      const b = structured.tasks.find((x) => x.id === t.id);
+      if (b) ordered.push(b);
+    }
+    const rest = structured.tasks.filter((b) => !taskOrder.some((t) => t.id === b.id));
+    const blocks = [...ordered, ...rest];
+
+    return (
+      <div className="space-y-4">
+        {blocks.map((block) => (
+          <article
+            key={block.id}
+            className="rounded-xl border border-ink/10 bg-white/95 p-4 shadow-sm ring-1 ring-ink/5"
+          >
+            <h5 className="text-sm font-semibold text-ink">
+              Task <span className="font-mono text-accent">{block.id}</span>
+            </h5>
+            <dl className="mt-3 space-y-3 text-sm">
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-ink/45">Feedback</dt>
+                <dd className="mt-1 text-ink/85 leading-relaxed">{block.feedback}</dd>
+              </div>
+              {block.correctedVersion ? (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-ink/45">
+                    Corrected version
+                  </dt>
+                  <dd className="mt-1 text-ink/85 leading-relaxed">
+                    <TextWithBold text={block.correctedVersion} />
+                  </dd>
+                </div>
+              ) : null}
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-ink/45">Tip</dt>
+                <dd className="mt-1 text-ink/85 leading-relaxed">{block.tip}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
+        <div className="rounded-xl border border-accent/25 bg-accent/[0.07] p-4 text-sm text-ink/85">
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent/90 mb-2">Overall</p>
+          <p className="leading-relaxed whitespace-pre-wrap">{structured.summary}</p>
+        </div>
+      </div>
+    );
+  }
+  if (plain) {
+    return (
+      <div className="text-sm text-ink/85 whitespace-pre-wrap border border-ink/8 rounded-lg p-4 bg-ink/[0.02] max-h-[min(60vh,480px)] overflow-y-auto">
+        {plain}
+      </div>
+    );
+  }
+  return null;
+}
+
 export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | null }) {
-  /** When set, overrides teacher / default level for generated exercises. */
   const [manualLevel, setManualLevel] = useState<string | null>(null);
   const [focusNote, setFocusNote] = useState("");
   const [active, setActive] = useState<ActiveExercise | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [audioByTask, setAudioByTask] = useState<Record<string, AudioMeta | null>>({});
+  const [feedbackStructured, setFeedbackStructured] = useState<StructuredExerciseFeedback | null>(null);
+  const [feedbackPlain, setFeedbackPlain] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [recordingTaskId, setRecordingTaskId] = useState<string | null>(null);
+  const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunksRef = useRef<BlobPart[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const filePickTaskIdRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const teacherLevel = normalizeLevel(assignedLevel);
   const levelInUse = manualLevel ?? teacherLevel;
@@ -38,18 +136,119 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   const teacherLabel =
     assignedLevel && CEFR_RE.test(assignedLevel.trim()) ? assignedLevel.trim().toUpperCase() : null;
 
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    };
+  }, []);
+
   function resetAll() {
     setActive(null);
     setAnswers({});
-    setFeedback(null);
+    setAudioByTask({});
+    setFeedbackStructured(null);
+    setFeedbackPlain(null);
     setError("");
+    stopRecording();
+  }
+
+  function stopRecording() {
+    try {
+      mediaRecorderRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
+    mediaRecorderRef.current = null;
+    recordChunksRef.current = [];
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setRecordingTaskId(null);
+  }
+
+  async function startRecording(taskId: string) {
+    setError("");
+    if (recordingTaskId) stopRecording();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const preferredTypes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+      const mimeType = preferredTypes.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+      const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      recordChunksRef.current = [];
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) recordChunksRef.current.push(e.data);
+      };
+      mr.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        const blob = new Blob(recordChunksRef.current, { type: mr.mimeType || "audio/webm" });
+        recordChunksRef.current = [];
+        const ext = blob.type.includes("mp4") ? "m4a" : "webm";
+        const file = new File([blob], `speaking-${taskId}.${ext}`, { type: blob.type || "audio/webm" });
+        void uploadAudioForTask(taskId, file);
+        mediaRecorderRef.current = null;
+        setRecordingTaskId(null);
+      };
+      mr.start(200);
+      mediaRecorderRef.current = mr;
+      setRecordingTaskId(taskId);
+    } catch {
+      setError("Microphone access was blocked or unavailable. Try uploading an audio file instead.");
+    }
+  }
+
+  async function uploadAudioForTask(taskId: string, file: File) {
+    setUploadingTaskId(taskId);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Upload failed");
+      }
+      if (typeof data.url !== "string" || data.type !== "audio") {
+        throw new Error("Please use an audio file (mp3, wav, webm, m4a, ogg).");
+      }
+      setAudioByTask((prev) => ({
+        ...prev,
+        [taskId]: { url: data.url, name: typeof data.name === "string" ? data.name : file.name },
+      }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setUploadingTaskId(null);
+    }
+  }
+
+  function triggerFilePick(taskId: string) {
+    filePickTaskIdRef.current = taskId;
+    fileInputRef.current?.click();
+  }
+
+  async function onAudioFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const taskId = filePickTaskIdRef.current;
+    filePickTaskIdRef.current = null;
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!taskId || !file) return;
+    await uploadAudioForTask(taskId, file);
+  }
+
+  function removeAudio(taskId: string) {
+    setAudioByTask((prev) => ({ ...prev, [taskId]: null }));
   }
 
   async function startExercise(exerciseTypeId: string) {
     const def = EXERCISE_TYPES.find((e) => e.id === exerciseTypeId);
     if (!def) return;
+    stopRecording();
     setError("");
-    setFeedback(null);
+    setFeedbackStructured(null);
+    setFeedbackPlain(null);
+    setAudioByTask({});
     setLoading(true);
     try {
       const res = await fetch("/api/student/learn-english/exercise", {
@@ -109,6 +308,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
         tasks,
       });
       setAnswers(Object.fromEntries(tasks.map((t) => [t.id, ""])));
+      setAudioByTask(Object.fromEntries(tasks.map((t) => [t.id, null])));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
@@ -121,6 +321,12 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
     setError("");
     setLoading(true);
     try {
+      const audioUrls: Record<string, string> = {};
+      for (const t of active.tasks) {
+        const a = audioByTask[t.id];
+        if (a?.url) audioUrls[t.id] = a.url;
+      }
+
       const res = await fetch("/api/student/learn-english/exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -132,10 +338,15 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
           introduction: active.introduction,
           tasks: active.tasks,
           answers,
+          audioUrls: Object.keys(audioUrls).length ? audioUrls : undefined,
         }),
       });
       const rawText = await res.text();
-      let data: { error?: unknown; feedback?: unknown } = {};
+      let data: {
+        error?: unknown;
+        structured?: unknown;
+        feedback?: unknown;
+      } = {};
       try {
         data = JSON.parse(rawText) as typeof data;
       } catch {
@@ -146,10 +357,23 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
           typeof data.error === "string" ? data.error : `Request failed (${res.status})`
         );
       }
-      if (typeof data.feedback !== "string") {
-        throw new Error("No feedback returned.");
+
+      if (data.structured && typeof data.structured === "object") {
+        const s = data.structured as StructuredExerciseFeedback;
+        if (typeof s.summary === "string" && Array.isArray(s.tasks) && s.tasks.length > 0) {
+          setFeedbackStructured(s);
+          setFeedbackPlain(null);
+        } else {
+          setFeedbackStructured(null);
+          setFeedbackPlain(typeof data.feedback === "string" ? data.feedback : rawText);
+        }
+      } else if (typeof data.feedback === "string" && data.feedback.trim()) {
+        setFeedbackStructured(null);
+        setFeedbackPlain(data.feedback);
+      } else {
+        setFeedbackStructured(null);
+        setFeedbackPlain("Could not load formatted feedback. Try “Check my answers” again.");
       }
-      setFeedback(data.feedback);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
@@ -157,18 +381,36 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
     }
   }
 
+  const isSpeakingPrep = active?.exerciseTypeId === "speaking-prep";
+
   const allAnswered =
     active &&
     active.tasks.length > 0 &&
-    active.tasks.every((t) => (answers[t.id] ?? "").trim().length > 0);
+    active.tasks.every((t) => {
+      const text = (answers[t.id] ?? "").trim();
+      if (isSpeakingPrep) {
+        return text.length > 0 || !!audioByTask[t.id]?.url;
+      }
+      return text.length > 0;
+    });
+
+  const hasFeedback = feedbackStructured !== null || (feedbackPlain !== null && feedbackPlain.length > 0);
 
   return (
     <div className="space-y-6">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="audio/*,.mp3,.wav,.webm,.m4a,.ogg"
+        className="hidden"
+        onChange={(e) => void onAudioFileChange(e)}
+      />
+
       <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-4 md:p-5">
         <h3 className="font-serif text-lg font-semibold text-ink">AI practice exercises</h3>
         <p className="mt-2 text-sm text-ink/70 max-w-2xl">
-          Short tasks matched to your level. Do them in a few minutes, then get feedback. Your teacher can set your
-          level; you can adjust it here if you like.
+          Short tasks matched to your level. Do them in a few minutes, then get clear feedback. Your teacher can set
+          your level; you can adjust it here if you like.
         </p>
         <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
           <div>
@@ -239,7 +481,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
         </div>
       )}
 
-      {active && !feedback && (
+      {active && !hasFeedback && (
         <div className="rounded-xl border border-accent/25 bg-accent/[0.05] p-4 md:p-5 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -247,16 +489,11 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
               <h4 className="mt-1 font-serif text-lg font-semibold text-ink">{active.title}</h4>
               <p className="mt-2 text-sm text-ink/75 whitespace-pre-wrap">{active.introduction}</p>
             </div>
-            <button
-              type="button"
-              onClick={resetAll}
-              disabled={loading}
-              className="btn-secondary text-sm shrink-0"
-            >
+            <button type="button" onClick={resetAll} disabled={loading} className="btn-secondary text-sm shrink-0">
               Cancel
             </button>
           </div>
-          <ol className="space-y-4 list-decimal list-inside marker:font-semibold marker:text-accent">
+          <ol className="space-y-5 list-decimal list-inside marker:font-semibold marker:text-accent">
             {active.tasks.map((t, index) => (
               <li key={t.id} className="pl-0">
                 <div className="inline-block w-[calc(100%-1.5rem)] align-top">
@@ -272,11 +509,65 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
                         [t.id]: e.target.value,
                       }))
                     }
-                    rows={3}
+                    rows={isSpeakingPrep ? 2 : 3}
                     disabled={loading}
-                    placeholder="Your answer…"
+                    placeholder={isSpeakingPrep ? "Optional if you send audio…" : "Your answer…"}
                     className="input w-full text-sm resize-y min-h-[72px]"
                   />
+
+                  {isSpeakingPrep && (
+                    <div className="mt-2 rounded-lg border border-ink/10 bg-white/60 p-3 space-y-2">
+                      <p className="text-xs text-ink/60">
+                        <span className="font-medium text-ink/75">Voice answer:</span> record here or upload an audio
+                        file. You can use voice only, text only, or both.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {recordingTaskId === t.id ? (
+                          <button
+                            type="button"
+                            onClick={stopRecording}
+                            disabled={loading}
+                            className="rounded-md bg-red-600/90 text-white text-sm px-3 py-1.5 hover:bg-red-700"
+                          >
+                            Stop recording
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void startRecording(t.id)}
+                            disabled={loading || uploadingTaskId === t.id || !!recordingTaskId}
+                            className="rounded-md bg-ink/10 text-sm px-3 py-1.5 hover:bg-ink/15 disabled:opacity-50"
+                          >
+                            {uploadingTaskId === t.id ? "Uploading…" : "Record"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => triggerFilePick(t.id)}
+                          disabled={loading || uploadingTaskId === t.id || !!recordingTaskId}
+                          className="rounded-md bg-ink/10 text-sm px-3 py-1.5 hover:bg-ink/15 disabled:opacity-50"
+                        >
+                          Upload audio
+                        </button>
+                        {audioByTask[t.id]?.url ? (
+                          <button
+                            type="button"
+                            onClick={() => removeAudio(t.id)}
+                            disabled={loading}
+                            className="text-sm text-red-600 hover:underline"
+                          >
+                            Remove audio
+                          </button>
+                        ) : null}
+                      </div>
+                      {audioByTask[t.id]?.url ? (
+                        <div className="pt-1">
+                          <p className="text-xs text-ink/50 mb-1 truncate">{audioByTask[t.id]?.name}</p>
+                          <audio src={audioByTask[t.id]!.url} controls className="w-full max-w-md h-9" />
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               </li>
             ))}
@@ -291,19 +582,25 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
               {loading ? "Checking…" : "Check my answers"}
             </button>
             {!allAnswered && (
-              <span className="text-xs text-ink/50 self-center">Answer every task to get feedback.</span>
+              <span className="text-xs text-ink/50 self-center">
+                {isSpeakingPrep
+                  ? "For each task, add text and/or audio before checking."
+                  : "Answer every task to get feedback."}
+              </span>
             )}
           </div>
         </div>
       )}
 
-      {active && feedback && (
+      {active && hasFeedback && (
         <div className="rounded-xl border border-ink/10 bg-white/80 p-4 md:p-5 space-y-4">
           <h4 className="font-serif text-lg font-semibold text-ink">Feedback</h4>
-          <div className="text-sm text-ink/85 whitespace-pre-wrap border border-ink/8 rounded-lg p-4 bg-ink/[0.02] max-h-[min(60vh,480px)] overflow-y-auto">
-            {feedback}
-          </div>
-          <div className="flex flex-wrap gap-2">
+          <ExerciseFeedbackPanel
+            structured={feedbackStructured}
+            plain={feedbackPlain}
+            taskOrder={active.tasks}
+          />
+          <div className="flex flex-wrap gap-2 pt-2">
             <button
               type="button"
               onClick={() => void startExercise(active.exerciseTypeId)}
@@ -312,12 +609,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
             >
               New round (same type)
             </button>
-            <button
-              type="button"
-              onClick={resetAll}
-              disabled={loading}
-              className="btn-secondary"
-            >
+            <button type="button" onClick={resetAll} disabled={loading} className="btn-secondary">
               Pick another exercise
             </button>
           </div>
