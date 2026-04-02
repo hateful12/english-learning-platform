@@ -109,6 +109,54 @@ export async function scheduleRemindersForNewHomework(
   }
 }
 
+const NEW_HW_DESC_PREVIEW = 4000;
+
+/** Immediate email when homework is assigned (separate from the pre-lesson reminder). */
+export async function notifyStudentsNewHomework(args: {
+  title: string;
+  description: string;
+  studentId: string | null;
+  groupId: string | null;
+}): Promise<void> {
+  const ids = await collectStudentIdsForHomework({
+    studentId: args.studentId,
+    groupId: args.groupId,
+  });
+  if (ids.length === 0) return;
+
+  const students = await prisma.student.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, email: true, name: true },
+  });
+
+  const baseUrl = await getAppBaseUrl();
+  const link = baseUrl ? `${baseUrl}/` : "";
+
+  const desc = args.description.trim();
+  const descSnippet =
+    desc.length > NEW_HW_DESC_PREVIEW ? `${desc.slice(0, NEW_HW_DESC_PREVIEW)}…` : desc;
+
+  for (const s of students) {
+    const name = s.name || "there";
+    const html = `
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>You have new homework: <strong>${escapeHtml(args.title)}</strong>.</p>
+      ${descSnippet ? `<p>${escapeHtml(descSnippet).replace(/\n/g, "<br/>")}</p>` : ""}
+      ${link ? `<p><a href="${escapeHtml(link)}">Open the app</a> to read the full task and submit your work.</p>` : ""}
+      <p>— Your teacher</p>
+    `.trim();
+
+    const result = await sendTransactionalEmail({
+      to: s.email,
+      subject: `New homework: ${args.title}`,
+      html,
+    });
+    if (!result.ok) {
+      console.error("[new-homework-email] failed", s.id, s.email, result.error);
+    }
+  }
+}
+
 export async function sendDueHomeworkReminders(limit = 30): Promise<{ sent: number; failed: number }> {
   const baseUrl = await getAppBaseUrl();
   const tz = getHomeworkReminderTimezone();

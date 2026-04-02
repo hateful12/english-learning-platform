@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { isTeacherLoggedIn, getStudentId } from "@/lib/auth";
-import { scheduleRemindersForNewHomework } from "@/lib/homework-reminders";
+import { notifyStudentsNewHomework, scheduleRemindersForNewHomework } from "@/lib/homework-reminders";
 
 export async function GET() {
   try {
@@ -248,6 +248,17 @@ export async function POST(request: NextRequest) {
       await scheduleRemindersForNewHomework(item.id, sid, gid);
     } catch (e) {
       console.error("scheduleRemindersForNewHomework:", e);
+    }
+
+    try {
+      await notifyStudentsNewHomework({
+        title,
+        description: (description as string) ?? "",
+        studentId: sid,
+        groupId: gid,
+      });
+    } catch (e) {
+      console.error("notifyStudentsNewHomework:", e);
     }
 
     return NextResponse.json({ ...item, groupId: (groupId as string) || null });
