@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { getStudentId } from "@/lib/auth";
 import { parseStructuredFeedback } from "@/lib/exercise-feedback";
-import { sanitizeImageTags } from "@/lib/exercise-image-url";
 import {
   createAssessmentOpenAI,
   getOpenAiApiKey,
@@ -27,7 +26,7 @@ function stripJsonFence(s: string): string {
     .trim();
 }
 
-type Task = { id: string; question: string; imageTags?: string };
+type Task = { id: string; question: string };
 
 function resolveHomeworkUploadFilePath(publicUrl: string): string | null {
   if (typeof publicUrl !== "string" || !publicUrl.startsWith("/uploads/homework/")) return null;
@@ -63,13 +62,11 @@ function parseGeneratedExercise(content: string): { title: string; introduction:
       if (!item || typeof item !== "object") continue;
       const id = (item as { id?: unknown }).id;
       const question = (item as { question?: unknown }).question;
-      const imageTagsRaw = (item as { imageTags?: unknown }).imageTags;
       if (typeof id !== "string" || typeof question !== "string") continue;
       const tid = id.trim();
       const q = question.trim();
       if (tid && q) {
-        const imageTags = sanitizeImageTags(imageTagsRaw);
-        tasks.push(imageTags ? { id: tid, question: q, imageTags } : { id: tid, question: q });
+        tasks.push({ id: tid, question: q });
       }
     }
     if (tasks.length < 3 || tasks.length > 6) return null;
@@ -121,7 +118,7 @@ function parseUkrainianTranslation(content: string): {
 function cefrTaskDepthGuidance(level: string): string {
   const L = level.toUpperCase();
   if (L === "A1" || L === "A2") {
-    return `CEFR ${L} — keep tasks concrete: very short sentences, basic vocabulary, mostly literal comprehension (who/what/where), simple gaps, and picture naming where useful.`;
+    return `CEFR ${L} — keep tasks concrete: very short sentences, basic vocabulary, mostly literal comprehension (who/what/where), and simple gaps.`;
   }
   if (L === "B1") {
     return `CEFR B1 — tasks must feel like solid intermediate practice, NOT like A2.
@@ -177,12 +174,11 @@ Rules:
 - Exactly 4 tasks (not 3, not 5).
 - Each task completable in about 1 minute; keep questions self-contained (no long passages).
 - Difficulty and instructions must match ${level}.
-- Mix task styles: short answer, grammar transforms, MCQ in text, picture prompts, etc.
-- For 1 or 2 tasks (not more), where it helps, add optional "imageTags": a short comma-separated list of simple English keywords for a stock photo (e.g. "cat,park" or "kitchen,cooking"). The question must tell the student to look at the picture (e.g. describe what you see, name 3 objects, what is happening). Omit "imageTags" on other tasks.
+- Mix task styles: short answer, grammar transforms, MCQ in text, etc. Text only — do not ask the student to look at a picture or photo.
 - English example sentences in tasks must stay inside 'single' or "double" quotes when you give a sentence for the student to read or analyse.
 
 Return ONLY valid JSON (no markdown code fences), shape:
-{"title":"string","introduction":"one short paragraph for the student","tasks":[{"id":"t1","question":"...","imageTags":"optional,english,keywords"},{"id":"t2","question":"..."},{"id":"t3","question":"..."},{"id":"t4","question":"..."}]}`;
+{"title":"string","introduction":"one short paragraph for the student","tasks":[{"id":"t1","question":"..."},{"id":"t2","question":"..."},{"id":"t3","question":"..."},{"id":"t4","question":"..."}]}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -405,7 +401,7 @@ Rules:
 PARTIAL translation rules (critical):
 1) titleUk: translate the exercise title into natural Ukrainian (or keep short English titles if they are level labels only).
 2) introductionUk: translate only rubric and instructions. Keep every English example sentence, quoted phrase, and vocabulary the student must read exactly as in the source — same spelling, same ' or " quotes.
-3) For each questionUk: translate ONLY instructional phrases (e.g. "Read this sentence:", "Look at the picture and", "Choose the best option:", "Write your answer.", "What do you see?").
+3) For each questionUk: translate ONLY instructional phrases (e.g. "Read this sentence:", "Choose the best option:", "Write your answer.", "Complete the gap:").
    - Never translate text inside 'single quotes' or "double quotes" — copy it exactly in place.
    - Never translate standalone English sentences or clauses that are the language being practised.
    - Keep English multiple-choice options if they are the answers to choose.
