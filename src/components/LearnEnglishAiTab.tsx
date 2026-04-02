@@ -746,9 +746,9 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
                       <p className="text-xs text-ink/60">
                         {isReadingAloud ? (
                           <>
-                            <span className="font-medium text-ink/75">Your reading (required):</span> read the passage
-                            above aloud, then record here or upload audio. Feedback uses your recording (and optional
-                            note).
+                            <span className="font-medium text-ink/75">Your reading (required):</span> read the whole
+                            story above aloud, then record here or upload audio. Feedback uses your recording (and
+                            optional note).
                           </>
                         ) : (
                           <>
@@ -820,7 +820,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
             {!allAnswered && (
               <span className="text-xs text-ink/50 self-center">
                 {isReadingAloud
-                  ? "Each task needs a recording of you reading the passage aloud."
+                  ? "Record yourself reading the whole story aloud."
                   : isSpeakingPrep
                     ? "For each task, add text and/or audio before checking."
                     : "Answer every task to get feedback."}

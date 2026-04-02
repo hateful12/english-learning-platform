@@ -46,7 +46,10 @@ async function transcribeAudioFile(openai: OpenAI, filePath: string): Promise<st
   return (transcription.text ?? "").trim();
 }
 
-function parseGeneratedExercise(content: string): { title: string; introduction: string; tasks: Task[] } | null {
+function parseGeneratedExercise(
+  content: string,
+  exerciseIdForValidation: string
+): { title: string; introduction: string; tasks: Task[] } | null {
   const raw = stripJsonFence(content);
   try {
     const o = JSON.parse(raw) as {
@@ -69,7 +72,11 @@ function parseGeneratedExercise(content: string): { title: string; introduction:
         tasks.push({ id: tid, question: q });
       }
     }
-    if (tasks.length < 3 || tasks.length > 6) return null;
+    if (exerciseIdForValidation === "reading") {
+      if (tasks.length !== 1) return null;
+    } else if (tasks.length < 3 || tasks.length > 6) {
+      return null;
+    }
     return {
       title: o.title.trim(),
       introduction: o.introduction.trim(),
@@ -162,25 +169,39 @@ function buildGenerateUserMessage(
   const readingNote =
     exerciseId === "reading"
       ? `
-Read-aloud mode (critical):
-- All 4 tasks must follow the same pattern: give a short English passage **in quotes** for the student to read **aloud**, and tell them clearly to **record their voice** reading that text (optional tiny written note only).
-- Passage length: about 15–45 seconds of reading at this CEFR level (very short lines for A1–A2; short paragraphs for B1+).
-- Vary styles: dialogue line, notice, description, mini-story — but do **not** switch to comprehension quizzes, gap-fills, or “answer a question” as the main task. The main task is always: read this printed text aloud and submit the recording.
-- The introduction must explain that they will read each text aloud and upload/record their reading for AI feedback.
+Read-aloud mode (critical) — **one exercise, one story**:
+- Return **exactly 1 task** (not 2, not 4). The whole activity is a **single short story** the student reads aloud in one go.
+- Put the **complete story inside 'single' or "double" quotes** in that one task’s question. Add a short instruction line before/after the quotes: read aloud clearly and **record your voice** reading the whole story (optional tiny written note only).
+- Story length: **short** — not a long text. Aim for roughly **40–90 seconds** of reading aloud at this level (use **few short paragraphs** for A1–A2; allow a little more for B1+; never novellas or many scenes).
+- One simple narrative or scene with a clear beginning/middle/end; no comprehension quiz as the main ask — the ask is always: read this story aloud and submit the recording.
+- The introduction must explain they have **one** short story to read aloud once and record for feedback.
 `
       : "";
 
   const depth =
     exerciseId === "reading"
-      ? `CEFR ${level} — read-aloud passages only; match vocabulary and length to the band.`
+      ? `CEFR ${level} — one short read-aloud story; vocabulary and length must fit the band (keep it concise).`
       : cefrTaskDepthGuidance(level);
   const grammarNote = grammarInUseVarietyNote(exerciseId, focusNote);
 
   const taskStyleRules =
     exerciseId === "reading"
-      ? `- All tasks are read-aloud of quoted text; recordings will be transcribed and compared to the target wording.`
+      ? `- Single task only: the quoted text is the full story; recording will be transcribed and compared to that wording.`
       : `- Mix task styles: short answer, grammar transforms, MCQ in text, etc. Text only — do not ask the student to look at a picture or photo.
 - English example sentences in tasks must stay inside 'single' or "double" quotes when you give a sentence for the student to read or analyse.`;
+
+  const taskCountRules =
+    exerciseId === "reading"
+      ? `- Exactly **1** task with \`"id":"t1"\`. The question contains one short story in quotes plus read-aloud + record instructions.
+- Difficulty and story language must match ${level}.`
+      : `- Exactly 4 tasks (not 3, not 5).
+- Each task completable in about 1 minute; keep questions self-contained (no long passages).
+- Difficulty and instructions must match ${level}.`;
+
+  const jsonShape =
+    exerciseId === "reading"
+      ? `{"title":"string","introduction":"one short paragraph for the student","tasks":[{"id":"t1","question":"instruction + full short story in quotes + record reminder"}]}`
+      : `{"title":"string","introduction":"one short paragraph for the student","tasks":[{"id":"t1","question":"..."},{"id":"t2","question":"..."},{"id":"t3","question":"..."},{"id":"t4","question":"..."}]}`;
 
   return `Create short English practice for one student at CEFR ${level}.
 
@@ -191,13 +212,11 @@ Task depth (follow closely):
 ${depth}
 
 Rules:
-- Exactly 4 tasks (not 3, not 5).
-- Each task completable in about 1 minute; keep questions self-contained (no long passages).
-- Difficulty and instructions must match ${level}.
+${taskCountRules}
 ${taskStyleRules}
 
 Return ONLY valid JSON (no markdown code fences), shape:
-{"title":"string","introduction":"one short paragraph for the student","tasks":[{"id":"t1","question":"..."},{"id":"t2","question":"..."},{"id":"t3","question":"..."},{"id":"t4","question":"..."}]}`;
+${jsonShape}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -248,7 +267,7 @@ export async function POST(request: NextRequest) {
       });
 
       const content = completion.choices[0]?.message?.content?.trim() ?? "";
-      const parsed = parseGeneratedExercise(content);
+      const parsed = parseGeneratedExercise(content, exerciseId);
       if (!parsed) {
         console.error("learn-english exercise generate parse failed:", content.slice(0, 400));
         return NextResponse.json(
@@ -336,7 +355,7 @@ export async function POST(request: NextRequest) {
         exerciseTypeIdFb === "reading"
           ? `
 
-Read-aloud exercise: the student was asked to read quoted English passages aloud. Their submission is a voice recording transcribed by Whisper and appears under [Voice answer, transcribed] (and optional written notes). Extract or infer the **target passage** from the task question (text in quotes). In feedback and tips:
+Read-aloud exercise: the student was asked to read **one short story** aloud (the full quoted text in the single task). Their submission is a voice recording transcribed by Whisper and appears under [Voice answer, transcribed] (and optional written notes). Extract or infer the **target story** from the task question (text in quotes). In feedback and tips:
 - Compare transcription to the target: missed words, extra words, substitutions, word order slips.
 - Comment on likely clarity/fluency only from what the transcript suggests (do not claim to have heard audio).
 - For correctedVersion when useful, show the target wording or a clean read-through, with **double-asterisk bold** only on parts they should fix.
