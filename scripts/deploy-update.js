@@ -70,6 +70,7 @@ else
 fi
 git fetch origin && git checkout ${BRANCH} && git reset --hard origin/${BRANCH}
 if [ -f "$KEEP" ]; then
+  mkdir -p prisma/prisma
   cp "$KEEP" prisma/prisma/dev.db
   echo "Restored DB from $KEEP (survives git reset; do not commit SQLite)."
 else
