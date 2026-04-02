@@ -10,7 +10,7 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-XSS-Protection", value: "1; mode=block" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // microphone=(self) so Speaking prep can use MediaRecorder; camera stays off
+  // microphone=(self) so Speaking practice can use MediaRecorder; camera stays off
   { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" },
   {
     key: "Strict-Transport-Security",

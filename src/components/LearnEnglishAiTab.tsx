@@ -644,7 +644,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
                     <p className="mt-3 text-sm text-ink/70 rounded-lg border border-sky-200/80 bg-sky-50/50 px-3 py-2">
                       <span className="font-medium text-ink">Складно читати англійською?</span> Натисніть «Перекласти
                       опис українською» — зʼявиться допомога українською. Відповіді все одно давайте англійською (або
-                      голосом у Speaking prep).
+                      голосом у Speaking practice).
                     </p>
                   ) : null}
                   <div className="mt-3 flex flex-wrap items-center gap-3">
