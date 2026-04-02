@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ScheduleViewer } from "./ScheduleViewer";
+import { LearnEnglishAiTab } from "./LearnEnglishAiTab";
 import { WordleTab } from "./WordleTab";
 import { EmojiPicker } from "./EmojiPicker";
 import {
@@ -35,13 +36,14 @@ type Homework = {
   responses?: HomeworkResponse[];
 };
 
-type Tab = "schedule" | "homework" | "payments" | "progress-test" | "games";
+type Tab = "schedule" | "homework" | "payments" | "progress-test" | "learn-ai" | "games";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "schedule", label: "Schedule", icon: "📅" },
   { id: "homework", label: "Homework", icon: "📝" },
   { id: "payments", label: "Payments", icon: "💳" },
   { id: "progress-test", label: "Progress Test", icon: "🎯" },
+  { id: "learn-ai", label: "Learn with AI", icon: "🤖" },
   { id: "games", label: "Games", icon: "🎮" },
 ];
 
@@ -401,6 +403,8 @@ export function StudentDashboard() {
 
         {/* Progress Test */}
         {activeTab === "progress-test" && <ProgressTestTab assignedLevel={studentInfo?.level ?? null} />}
+
+        {activeTab === "learn-ai" && <LearnEnglishAiTab />}
 
         {/* Games */}
         {activeTab === "games" && (
