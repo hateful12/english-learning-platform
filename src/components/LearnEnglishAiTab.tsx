@@ -606,20 +606,35 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
         <div>
           <p className="text-sm font-medium text-ink mb-3">Choose an exercise</p>
           <ul className="grid gap-3 sm:grid-cols-2">
-            {EXERCISE_TYPES.map((ex) => (
-              <li key={ex.id}>
-                <button
-                  type="button"
-                  onClick={() => void startExercise(ex.id)}
-                  disabled={loading}
-                  className="w-full text-left rounded-xl border border-ink/12 bg-white/70 hover:bg-white hover:border-accent/30 p-4 transition-colors disabled:opacity-50"
-                >
-                  <span className="font-medium text-ink">{ex.title}</span>
-                  <span className="mt-1 block text-sm text-ink/60">{ex.description}</span>
-                  <span className="mt-2 inline-block text-xs font-medium text-accent">Start →</span>
-                </button>
-              </li>
-            ))}
+            {EXERCISE_TYPES.map((ex) =>
+              ex.availableSoon ? (
+                <li key={ex.id}>
+                  <div
+                    className="w-full text-left rounded-xl border border-dashed border-ink/20 bg-ink/[0.03] p-4 text-ink/55 cursor-not-allowed select-none"
+                    aria-label={`${ex.title}, available soon`}
+                  >
+                    <span className="font-medium text-ink/70">{ex.title}</span>
+                    <span className="mt-1 block text-sm text-ink/50">{ex.description}</span>
+                    <span className="mt-2 inline-block text-xs font-semibold uppercase tracking-wide text-ink/45">
+                      Available soon
+                    </span>
+                  </div>
+                </li>
+              ) : (
+                <li key={ex.id}>
+                  <button
+                    type="button"
+                    onClick={() => void startExercise(ex.id)}
+                    disabled={loading}
+                    className="w-full text-left rounded-xl border border-ink/12 bg-white/70 hover:bg-white hover:border-accent/30 p-4 transition-colors disabled:opacity-50"
+                  >
+                    <span className="font-medium text-ink">{ex.title}</span>
+                    <span className="mt-1 block text-sm text-ink/60">{ex.description}</span>
+                    <span className="mt-2 inline-block text-xs font-medium text-accent">Start →</span>
+                  </button>
+                </li>
+              )
+            )}
           </ul>
         </div>
       )}
