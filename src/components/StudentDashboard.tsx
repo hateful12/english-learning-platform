@@ -105,15 +105,20 @@ function HomeworkSubmit({
   homeworkId,
   initialResponse,
   initialAttachments,
+  submittedAt,
   submitting,
   onSubmit,
 }: {
   homeworkId: string;
   initialResponse: string;
   initialAttachments: HomeworkAttachment[];
+  submittedAt?: string | null;
   submitting: boolean;
-  onSubmit: (id: string, response: string, attachments: HomeworkAttachment[]) => Promise<void>;
+  onSubmit: (id: string, response: string, attachments: HomeworkAttachment[]) => Promise<boolean>;
 }) {
+  const hasSavedWork =
+    initialResponse.trim().length > 0 || initialAttachments.length > 0;
+  const [editingOpen, setEditingOpen] = useState(!hasSavedWork);
   const [response, setResponse] = useState(initialResponse);
   const [attachments, setAttachments] = useState<HomeworkAttachment[]>(initialAttachments);
   const [uploading, setUploading] = useState(false);
@@ -123,6 +128,12 @@ function HomeworkSubmit({
     setResponse(initialResponse);
     setAttachments(initialAttachments);
   }, [initialResponse, initialAttachments]);
+
+  const savedWorkSignature = `${homeworkId}:${initialResponse.trim()}:${initialAttachments.map((a) => a.url).sort().join("|")}`;
+  useEffect(() => {
+    const has = initialResponse.trim().length > 0 || initialAttachments.length > 0;
+    setEditingOpen(!has);
+  }, [savedWorkSignature]);
 
   async function uploadFile(file: File) {
     const formData = new FormData();
@@ -149,8 +160,47 @@ function HomeworkSubmit({
     }
   }
 
+  async function handleTurnIn() {
+    const ok = await onSubmit(homeworkId, response, attachments);
+    if (ok) setEditingOpen(false);
+  }
+
+  if (hasSavedWork && !editingOpen) {
+    return (
+      <div className="mt-4 space-y-3">
+        <div className="rounded-xl border border-accent/25 bg-accent/8 px-4 py-3">
+          <p className="text-sm font-semibold text-ink">Your homework was sent to your teacher</p>
+          <p className="mt-1 text-sm text-ink/70">
+            They will see your answer and files here. When something changes, you can open your work again below.
+          </p>
+          {submittedAt && (
+            <p className="mt-2 text-xs text-ink/50">
+              Submitted {new Date(submittedAt).toLocaleString()}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditingOpen(true)}
+          className="rounded-lg border border-ink/15 bg-white/80 px-4 py-2.5 text-sm font-semibold text-ink shadow-sm hover:border-accent/35 hover:bg-accent/5"
+        >
+          Check my answer
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4 rounded-xl border border-ink/15 bg-gradient-to-b from-ink/[0.03] to-transparent p-4 shadow-sm">
+      {hasSavedWork && (
+        <button
+          type="button"
+          onClick={() => setEditingOpen(false)}
+          className="mb-3 text-sm font-medium text-ink/55 hover:text-ink"
+        >
+          ← Back to sent homework
+        </button>
+      )}
       <div className="mb-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-ink/45">Hand in your work</p>
         <p className="mt-0.5 text-sm text-ink/65">
@@ -211,13 +261,13 @@ function HomeworkSubmit({
       </div>
       <button
         type="button"
-        onClick={() => onSubmit(homeworkId, response, attachments)}
+        onClick={() => void handleTurnIn()}
         disabled={submitting}
         className="mt-4 btn-primary font-semibold"
       >
         {submitting
           ? "Turning in…"
-          : initialResponse
+          : hasSavedWork
             ? "Update your submission"
             : "Turn in assignment"}
       </button>
@@ -312,7 +362,7 @@ export function StudentDashboard() {
     await loadHomework();
   }
 
-  async function submitResponse(homeworkId: string, response: string, attachments: HomeworkAttachment[] = []) {
+  async function submitResponse(homeworkId: string, response: string, attachments: HomeworkAttachment[] = []): Promise<boolean> {
     setSubmittingId(homeworkId);
     try {
       const res = await fetch(`/api/homework/${homeworkId}/response`, {
@@ -323,9 +373,13 @@ export function StudentDashboard() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(err.error || "Failed to submit");
-        return;
+        return false;
       }
       await loadHomework();
+      return true;
+    } catch {
+      alert("Something went wrong. Please try again.");
+      return false;
     } finally {
       setSubmittingId(null);
     }
@@ -426,7 +480,7 @@ function HomeworkItem({
   item: Homework;
   readOnly?: boolean;
   submittingId: string | null;
-  onSubmit: (id: string, response: string, attachments: HomeworkAttachment[]) => Promise<void>;
+  onSubmit: (id: string, response: string, attachments: HomeworkAttachment[]) => Promise<boolean>;
   onDelete?: (id: string) => Promise<void>;
 }) {
   const [deleting, setDeleting] = useState(false);
@@ -505,6 +559,7 @@ function HomeworkItem({
           homeworkId={item.id}
           initialResponse={myResponse?.response ?? ""}
           initialAttachments={parseStudentResponseAttachments(myResponse?.studentResponseAttachments)}
+          submittedAt={myResponse?.submittedAt}
           submitting={submittingId === item.id}
           onSubmit={onSubmit}
         />
@@ -565,7 +620,7 @@ function HomeworkTab({
   archiveMonth: string;
   onArchiveToggle: () => void;
   onArchiveMonthChange: (m: string) => void;
-  onSubmit: (id: string, response: string, attachments: HomeworkAttachment[]) => Promise<void>;
+  onSubmit: (id: string, response: string, attachments: HomeworkAttachment[]) => Promise<boolean>;
   onDelete: (id: string) => Promise<void>;
 }) {
   const months = Array.from(
