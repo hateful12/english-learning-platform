@@ -2,7 +2,11 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { EXERCISE_TYPES } from "@/data/learnEnglishExerciseTypes";
-import { buildExerciseImageUrl } from "@/lib/exercise-image-url";
+import {
+  buildExerciseImageUrl,
+  EXERCISE_IMAGE_HEIGHT,
+  EXERCISE_IMAGE_WIDTH,
+} from "@/lib/exercise-image-url";
 import type { StructuredExerciseFeedback, TaskFeedbackBlock } from "@/lib/exercise-feedback";
 
 const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
@@ -639,12 +643,15 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
               <li key={t.id} className="pl-0">
                 <div className="inline-block w-[calc(100%-1.5rem)] align-top">
                   {pictureUrl ? (
-                    <figure className="mb-3 overflow-hidden rounded-lg border border-ink/12 bg-white/80 shadow-sm">
+                    <figure className="mb-3 mx-auto max-w-2xl rounded-lg border border-ink/12 bg-ink/[0.06] shadow-sm overflow-hidden">
                       <img
                         src={pictureUrl}
+                        width={EXERCISE_IMAGE_WIDTH}
+                        height={EXERCISE_IMAGE_HEIGHT}
                         alt="Picture for this task — answer in English as the question asks."
-                        className="w-full max-h-52 object-cover bg-ink/5"
+                        className="mx-auto block h-auto max-h-[min(20rem,55vh)] w-full object-contain"
                         loading="lazy"
+                        decoding="async"
                       />
                     </figure>
                   ) : null}
