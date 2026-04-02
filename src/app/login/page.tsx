@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { StudentLogin } from "@/components/StudentLogin";
 import Link from "next/link";
 
@@ -14,7 +15,9 @@ export default function LoginPage() {
         <p className="mt-1 text-sm text-ink/60">
           Sign in to see your homework, lessons, and payment info.
         </p>
-        <StudentLogin />
+        <Suspense fallback={<p className="mt-6 text-sm text-ink/40">Loading…</p>}>
+          <StudentLogin />
+        </Suspense>
         <p className="mt-4 text-center text-sm text-ink/50">
           Need an account? Use the invite link from your teacher.
         </p>

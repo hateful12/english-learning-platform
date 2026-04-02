@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { getStudentId } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { StudentDashboard } from "@/components/StudentDashboard";
 import { StudentHeader } from "@/components/StudentHeader";
 import { Logo } from "@/components/Logo";
+import { HeaderBackground } from "@/components/HeaderBackground";
 
 export default async function HomePage() {
   const studentId = await getStudentId();
@@ -17,8 +19,9 @@ export default async function HomePage() {
   if (!student) {
     return (
       <div className="min-h-screen">
-        <header className="header-london-bg border-b border-ink/10">
-          <div className="flex items-center justify-between px-6 py-1 md:px-10">
+        <header className="relative min-h-[72px] border-b border-ink/10 overflow-hidden">
+          <HeaderBackground />
+          <div className="relative flex items-center justify-between px-6 py-1 md:px-10">
             <Logo />
             <div className="flex gap-3">
               <Link href="/login" className="text-sm text-ink/60 hover:text-ink transition-colors">
@@ -147,7 +150,15 @@ export default async function HomePage() {
 
       <StudentHeader student={student} />
       <main className="relative py-6 px-[4%] md:px-[7%]">
-        <StudentDashboard />
+        <Suspense
+          fallback={
+            <div className="flex justify-center py-24">
+              <span className="text-ink/40 text-sm tracking-wide">Loading…</span>
+            </div>
+          }
+        >
+          <StudentDashboard />
+        </Suspense>
       </main>
     </div>
   );

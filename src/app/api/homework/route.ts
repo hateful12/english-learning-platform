@@ -254,8 +254,10 @@ export async function POST(request: NextRequest) {
 
     try {
       await notifyStudentsNewHomework({
+        homeworkId: item.id,
         title,
         description: (description as string) ?? "",
+        attachmentsJson: attachmentsJson,
         studentId: sid,
         groupId: gid,
       });

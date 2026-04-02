@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+
+function safeInternalNext(next: string | null): string {
+  if (!next) return "/";
+  const t = next.trim();
+  if (!t.startsWith("/") || t.startsWith("//")) return "/";
+  if (t.includes("://")) return "/";
+  return t;
+}
 
 export function StudentLogin() {
   const [email, setEmail] = useState("");
@@ -9,6 +17,8 @@ export function StudentLogin() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const afterLogin = safeInternalNext(searchParams.get("next"));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,7 +35,7 @@ export function StudentLogin() {
       setError(data.error || "Login failed");
       return;
     }
-    router.push("/");
+    router.push(afterLogin);
     router.refresh();
   }
 

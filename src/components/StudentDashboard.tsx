@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ScheduleViewer } from "./ScheduleViewer";
 import { LearnEnglishAiTab } from "./LearnEnglishAiTab";
 import { WordleTab } from "./WordleTab";
@@ -252,7 +253,14 @@ function HomeworkSubmit({
 type StudentInfo = { id: string; email: string; name: string | null; paymentCode?: string; level?: string | null } | null;
 type PublicSettings = { lessonPrice: number | null; monobankCard: string | null } | null;
 
+const TAB_IDS: Tab[] = ["schedule", "homework", "payments", "progress-test", "learn-ai", "games"];
+
+function isTab(s: string | null): s is Tab {
+  return s !== null && TAB_IDS.includes(s as Tab);
+}
+
 export function StudentDashboard() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<Tab>("schedule");
   const [homework, setHomework] = useState<Homework[]>([]);
   const [studentInfo, setStudentInfo] = useState<StudentInfo>(null);
@@ -302,6 +310,27 @@ export function StudentDashboard() {
       setLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    const hw = searchParams.get("hw");
+    const tab = searchParams.get("tab");
+    if (hw) {
+      setActiveTab("homework");
+      return;
+    }
+    if (isTab(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const hw = searchParams.get("hw");
+    if (!hw || activeTab !== "homework" || homework.length === 0) return;
+    const id = `student-hw-${hw}`;
+    const run = () => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const t = window.setTimeout(run, 80);
+    return () => window.clearTimeout(t);
+  }, [searchParams, activeTab, homework]);
 
   async function deleteArchiveItem(homeworkId: string) {
     await fetch(`/api/homework/${homeworkId}/student-hide`, { method: "POST" });
@@ -443,7 +472,7 @@ function HomeworkItem({
   }
 
   return (
-    <li className="border-b border-ink/5 pb-5 last:border-0 last:pb-0">
+    <li id={`student-hw-${item.id}`} className="border-b border-ink/5 pb-5 last:border-0 last:pb-0 scroll-mt-24">
       <div className="flex items-start justify-between gap-2">
         <h3 className="font-medium text-ink">{item.title}</h3>
         <div className="flex items-center gap-2 shrink-0">

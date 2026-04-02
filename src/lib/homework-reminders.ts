@@ -21,6 +21,95 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+const DESC_PREVIEW_CHARS = 8000;
+
+type HwAttachment = { url?: string; name?: string; type?: string };
+
+function parseHomeworkAttachmentsJson(raw: string): HwAttachment[] {
+  try {
+    const arr = JSON.parse(raw || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function absoluteAssetUrl(baseUrl: string, path: string): string {
+  const p = (path || "").trim();
+  if (!p) return "";
+  if (p.startsWith("http://") || p.startsWith("https://")) return p;
+  const b = baseUrl.replace(/\/$/, "");
+  return `${b}${p.startsWith("/") ? p : `/${p}`}`;
+}
+
+/** Opens student dashboard on Homework tab, scrolled to this task. */
+function homeworkTabDeepLink(baseUrl: string, homeworkId: string): string {
+  const b = baseUrl.replace(/\/$/, "");
+  return `${b}/?tab=homework&hw=${encodeURIComponent(homeworkId)}`;
+}
+
+function loginThenHomeworkLink(baseUrl: string, homeworkId: string): string {
+  const b = baseUrl.replace(/\/$/, "");
+  const next = `/?tab=homework&hw=${encodeURIComponent(homeworkId)}`;
+  return `${b}/login?next=${encodeURIComponent(next)}`;
+}
+
+function buildHomeworkEmailHtml(opts: {
+  studentName: string;
+  description: string;
+  homeworkId: string;
+  baseUrl: string;
+  attachmentsJson: string;
+  /** First content block after greeting (include title inside if needed). */
+  leadHtml: string;
+}): string {
+  const desc = opts.description.trim();
+  const snippet = desc.length > DESC_PREVIEW_CHARS ? `${desc.slice(0, DESC_PREVIEW_CHARS)}…` : desc;
+  const atts = parseHomeworkAttachmentsJson(opts.attachmentsJson);
+  const abs = (u: string) => absoluteAssetUrl(opts.baseUrl, u);
+
+  let attachmentsBlock = "";
+  if (atts.length > 0) {
+    const parts = atts.map((a) => {
+      const url = abs(a.url || "");
+      const name = escapeHtml(a.name || "attachment");
+      if (!url) return `<p>📎 ${name}</p>`;
+      if (a.type === "image") {
+        return `<p style="margin:12px 0"><span style="font-size:13px;color:#444">${name}</span><br/><a href="${escapeHtml(url)}" style="text-decoration:none"><img src="${escapeHtml(url)}" alt="" width="560" style="max-width:100%;height:auto;border-radius:8px;border:1px solid #e5e7eb"/></a></p>`;
+      }
+      return `<p>📎 <a href="${escapeHtml(url)}">${name}</a></p>`;
+    });
+    attachmentsBlock = `<hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0"/>
+      <p style="font-size:13px;color:#666;margin:0 0 8px">Attachments (${atts.length})</p>
+      ${parts.join("")}`;
+  }
+
+  const hasBase = Boolean(opts.baseUrl);
+  const openHw = hasBase ? homeworkTabDeepLink(opts.baseUrl, opts.homeworkId) : "";
+  const signIn = hasBase ? loginThenHomeworkLink(opts.baseUrl, opts.homeworkId) : "";
+
+  const actions = hasBase
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:20px 0"><tr>
+        <td><a href="${escapeHtml(openHw)}" style="display:inline-block;padding:12px 20px;background:#0d9488;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Open in Homework tab</a></td>
+      </tr></table>
+      <p style="font-size:12px;color:#888;margin:0 0 8px">Direct link (copy if the button does not work):<br/>
+      <a href="${escapeHtml(openHw)}" style="word-break:break-all;color:#0d9488">${escapeHtml(openHw)}</a></p>
+      <p style="font-size:12px;color:#888;margin:0">Not signed in? <a href="${escapeHtml(signIn)}" style="color:#0d9488">Log in</a> — you will return to this homework.</p>`
+    : "";
+
+  return `
+    <p>Hi ${escapeHtml(opts.studentName)},</p>
+    ${opts.leadHtml}
+    ${snippet ? `<div style="margin-top:14px;padding:14px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+      <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">Preview</p>
+      <p style="margin:0;font-size:14px;line-height:1.55;color:#374151;white-space:pre-wrap">${escapeHtml(snippet).replace(/\n/g, "<br/>")}</p>
+    </div>` : ""}
+    ${attachmentsBlock}
+    ${actions}
+    <p style="margin-top:24px">— Your teacher</p>
+  `.trim();
+}
+
 export async function collectStudentIdsForHomework(args: {
   studentId: string | null;
   groupId: string | null;
@@ -109,12 +198,12 @@ export async function scheduleRemindersForNewHomework(
   }
 }
 
-const NEW_HW_DESC_PREVIEW = 4000;
-
 /** Immediate email when homework is assigned (separate from the pre-lesson reminder). */
 export async function notifyStudentsNewHomework(args: {
+  homeworkId: string;
   title: string;
   description: string;
+  attachmentsJson: string;
   studentId: string | null;
   groupId: string | null;
 }): Promise<void> {
@@ -130,21 +219,17 @@ export async function notifyStudentsNewHomework(args: {
   });
 
   const baseUrl = await getAppBaseUrl();
-  const link = baseUrl ? `${baseUrl}/` : "";
-
-  const desc = args.description.trim();
-  const descSnippet =
-    desc.length > NEW_HW_DESC_PREVIEW ? `${desc.slice(0, NEW_HW_DESC_PREVIEW)}…` : desc;
 
   for (const s of students) {
     const name = s.name || "there";
-    const html = `
-      <p>Hi ${escapeHtml(name)},</p>
-      <p>You have new homework: <strong>${escapeHtml(args.title)}</strong>.</p>
-      ${descSnippet ? `<p>${escapeHtml(descSnippet).replace(/\n/g, "<br/>")}</p>` : ""}
-      ${link ? `<p><a href="${escapeHtml(link)}">Open the app</a> to read the full task and submit your work.</p>` : ""}
-      <p>— Your teacher</p>
-    `.trim();
+    const html = buildHomeworkEmailHtml({
+      studentName: name,
+      description: args.description,
+      homeworkId: args.homeworkId,
+      baseUrl,
+      attachmentsJson: args.attachmentsJson,
+      leadHtml: `<p>You have new homework: <strong>${escapeHtml(args.title)}</strong>.</p>`,
+    });
 
     const result = await sendTransactionalEmail({
       to: s.email,
@@ -166,7 +251,7 @@ export async function sendDueHomeworkReminders(limit = 30): Promise<{ sent: numb
     where: { sentAt: null, scheduledAt: { lte: now } },
     include: {
       student: { select: { email: true, name: true } },
-      homework: { select: { title: true } },
+      homework: { select: { id: true, title: true, description: true, attachments: true } },
     },
     take: limit,
     orderBy: { scheduledAt: "asc" },
@@ -188,13 +273,15 @@ export async function sendDueHomeworkReminders(limit = 30): Promise<{ sent: numb
     }
 
     const name = r.student.name || "there";
-    const link = baseUrl ? `${baseUrl}/` : "";
-    const html = `
-      <p>Hi ${escapeHtml(name)},</p>
-      <p>This is a reminder about your homework <strong>${escapeHtml(r.homework.title)}</strong> before ${escapeHtml(lessonFmt)}.</p>
-      ${link ? `<p><a href="${escapeHtml(link)}">Open the app</a></p>` : ""}
-      <p>— Your teacher</p>
-    `.trim();
+    const hw = r.homework;
+    const html = buildHomeworkEmailHtml({
+      studentName: name,
+      description: hw.description ?? "",
+      homeworkId: hw.id,
+      baseUrl,
+      attachmentsJson: hw.attachments ?? "[]",
+      leadHtml: `<p>This is a reminder about your homework <strong>${escapeHtml(hw.title)}</strong> before <strong>${escapeHtml(lessonFmt)}</strong>.</p>`,
+    });
 
     const result = await sendTransactionalEmail({
       to: r.student.email,
