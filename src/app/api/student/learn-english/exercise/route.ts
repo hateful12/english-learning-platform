@@ -143,6 +143,52 @@ function cefrTaskDepthGuidance(level: string): string {
   return `Match task depth to CEFR ${level}: stretch the student without going far above the band.`;
 }
 
+/** Quoted read-aloud story must match this CEFR band — not harder, not markedly below. */
+function readingStoryLevelGuidance(level: string): string {
+  const L = level.trim().toUpperCase();
+  if (L === "A1") {
+    return `Story must be **CEFR A1**:
+- **Vocabulary:** only very common everyday words; **no** idioms, phrasal verbs, or rare words.
+- **Grammar:** mainly present simple and **be**; can use **can** for ability; avoid perfect tenses, passive, conditionals, relative clauses.
+- **Form:** **about 35–60 words**, **5–9 very short sentences** (often 3–8 words); one simple concrete situation (e.g. daily routine, shopping, family).
+- **Hard rule:** if a word or structure is typical of A2+, replace it with a simpler A1 choice.`;
+  }
+  if (L === "A2") {
+    return `Story must be **CEFR A2**:
+- **Vocabulary:** common concrete topics; simple phrases only; idioms **very rare** and transparent.
+- **Grammar:** past simple, future with **will/going to**, **because/so**, simple comparisons; limited use of **when/if** clauses.
+- **Form:** **about 60–100 words**, **7–12 short sentences**; simple narrative or dialogue.
+- **Hard rule:** do **not** use B1+ patterns (present perfect narratives, passive voice, unreal conditionals, complex relatives) unless a single light example fits natural A2 coursebooks — prefer simple.`;
+  }
+  if (L === "B1") {
+    return `Story must be **CEFR B1**:
+- **Vocabulary:** intermediate, everyday + light abstraction; avoid literary or specialised advanced lexis.
+- **Grammar:** present perfect for experience/recent past, **must/should**, simple relative clauses (**who/which/that**), first conditional; some longer sentences OK.
+- **Form:** **about 100–150 words**, one coherent mini-story (can include 1–4 short paragraphs).
+- **Hard rule:** do **not** write at B2+ density (heavy passives, mixed conditionals, subtle irony, dense nominalisation).`;
+  }
+  if (L === "B2") {
+    return `Story must be **CEFR B2**:
+- **Vocabulary:** upper-intermediate; natural collocation; still **no** specialised academic/professional jargon unless glossed in context (avoid glossing — keep plain).
+- **Grammar:** varied tenses and aspects, passive where natural, second conditional, wider linking; complex sentences allowed but stay clear.
+- **Form:** **about 140–200 words**; nuanced but still a short story.
+- **Hard rule:** do **not** target C1 literary voice or low-frequency imagery throughout.`;
+  }
+  if (L === "C1") {
+    return `Story must be **CEFR C1**:
+- **Vocabulary & grammar:** advanced, precise; natural idioms and nuanced connectors OK; subordination and stance-taking acceptable.
+- **Form:** **about 180–260 words**; one polished short narrative or scene.
+- **Hard rule:** avoid sounding like **C2** exam rhetoric or highly literary register unless one phrase fits naturally — stay **solid C1**.`;
+  }
+  if (L === "C2") {
+    return `Story must be **CEFR C2**:
+- **Vocabulary & grammar:** full productive range where natural; subtle register choices OK.
+- **Form:** **about 200–300 words** maximum for this activity — still one short story, not a full essay.
+- **Hard rule:** do **not** simplify to B2; the student expects near-native complexity appropriate to C2.`;
+  }
+  return `Story language must align strictly with CEFR ${level}; prefer level-appropriate wording over generic “plain English”.`;
+}
+
 function grammarInUseVarietyNote(exerciseId: string, focusNote: string | undefined): string {
   if (exerciseId !== "grammar") return "";
   const note = focusNote?.trim() ?? "";
@@ -170,17 +216,17 @@ function buildGenerateUserMessage(
     exerciseId === "reading"
       ? `
 Read-aloud mode (critical) — **one exercise, one story**:
+- Student level is **CEFR ${level}**. The **quoted story must match this level exactly**: not written for a higher band, and not oversimplified to a lower band (unless ${level} is A1).
 - Return **exactly 1 task** (not 2, not 4). The whole activity is a **single short story** the student reads aloud in one go.
 - Put the **complete story inside 'single' or "double" quotes** in that one task’s question. Add a short instruction line before/after the quotes: read aloud clearly and **record your voice** reading the whole story (optional tiny written note only).
-- Story length: **short** — not a long text. Aim for roughly **40–90 seconds** of reading aloud at this level (use **few short paragraphs** for A1–A2; allow a little more for B1+; never novellas or many scenes).
-- One simple narrative or scene with a clear beginning/middle/end; no comprehension quiz as the main ask — the ask is always: read this story aloud and submit the recording.
-- The introduction must explain they have **one** short story to read aloud once and record for feedback.
+- One coherent narrative or scene; no comprehension quiz as the main ask — the ask is always: read this story aloud and submit the recording.
+- The introduction must explain they have **one** short story at **their level (${level})** to read aloud once and record for feedback.
 `
       : "";
 
   const depth =
     exerciseId === "reading"
-      ? `CEFR ${level} — one short read-aloud story; vocabulary and length must fit the band (keep it concise).`
+      ? readingStoryLevelGuidance(level)
       : cefrTaskDepthGuidance(level);
   const grammarNote = grammarInUseVarietyNote(exerciseId, focusNote);
 
@@ -193,7 +239,7 @@ Read-aloud mode (critical) — **one exercise, one story**:
   const taskCountRules =
     exerciseId === "reading"
       ? `- Exactly **1** task with \`"id":"t1"\`. The question contains one short story in quotes plus read-aloud + record instructions.
-- Difficulty and story language must match ${level}.`
+- **Every sentence in the quoted story** must be appropriate for **CEFR ${level}** (see Task depth). Proofread the story against a level-${level} coursebook mental model.`
       : `- Exactly 4 tasks (not 3, not 5).
 - Each task completable in about 1 minute; keep questions self-contained (no long passages).
 - Difficulty and instructions must match ${level}.`;
@@ -249,13 +295,17 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Missing exerciseId" }, { status: 400 });
       }
 
+      const systemGenerate =
+        exerciseId === "reading"
+          ? "You write concise English learning exercises. For read-aloud activities, the quoted story must strictly match the student's CEFR band in vocabulary and grammar — do not level up or level down. Output only valid JSON as requested. No markdown."
+          : "You write concise English learning exercises. Calibrate cognitive demand to the CEFR level: B1 and above must not collapse into single-sentence literal recall. For grammar exercises, vary the grammar focus across tasks — do not default every item to reported speech. Output only valid JSON as requested. No markdown.";
+
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
             role: "system",
-            content:
-              "You write concise English learning exercises. Calibrate cognitive demand to the CEFR level: B1 and above must not collapse into single-sentence literal recall. For grammar exercises, vary the grammar focus across tasks — do not default every item to reported speech. Output only valid JSON as requested. No markdown.",
+            content: systemGenerate,
           },
           {
             role: "user",
@@ -355,7 +405,7 @@ export async function POST(request: NextRequest) {
         exerciseTypeIdFb === "reading"
           ? `
 
-Read-aloud exercise: the student was asked to read **one short story** aloud (the full quoted text in the single task). Their submission is a voice recording transcribed by Whisper and appears under [Voice answer, transcribed] (and optional written notes). Extract or infer the **target story** from the task question (text in quotes). In feedback and tips:
+Read-aloud exercise: the student was asked to read **one short story** aloud (the full quoted text in the single task), written for **CEFR ${level}**. Their submission is a voice recording transcribed by Whisper and appears under [Voice answer, transcribed] (and optional written notes). Extract or infer the **target story** from the task question (text in quotes). Expect language appropriate to **${level}** — judge accuracy and substitutions against that level, not against advanced native norms. In feedback and tips:
 - Compare transcription to the target: missed words, extra words, substitutions, word order slips.
 - Comment on likely clarity/fluency only from what the transcript suggests (do not claim to have heard audio).
 - For correctedVersion when useful, show the target wording or a clean read-through, with **double-asterisk bold** only on parts they should fix.
