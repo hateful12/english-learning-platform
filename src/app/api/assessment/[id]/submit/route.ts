@@ -25,10 +25,12 @@ function buildEvaluatePrompt(params: {
 
 The student completed open-ended ${skill ?? "production"} tasks. Rate their written responses for appropriateness, range, accuracy, and task achievement at the ${level} level.
 
+Feedback style: be encouraging but concrete. Name at least one strength. Give 1–2 specific improvement areas (e.g. word choice, tone, clarity, grammar pattern). For production tasks, you may suggest one short rewrite idea (e.g. "Try opening with…" or "A more natural phrase would be…") without rewriting their whole answer.
+
 Return ONLY valid JSON — no markdown, no extra text:
 {
   "score": <integer 0-100>,
-  "feedback": "<2-4 sentences: encouraging, specific to their ${skill ?? "English"} performance at ${level}, one clear next step>"
+  "feedback": "<3-5 sentences total; actionable and tied to ${level}>"
 }`;
   }
 
@@ -37,10 +39,12 @@ Return ONLY valid JSON — no markdown, no extra text:
 
 The student completed multiple-choice questions. The user message JSON includes each item with isCorrect (already computed). Use it only to inform your feedback — do NOT change the scoring logic: your "score" field MUST equal Math.round(100 * (count of isCorrect true) / (total items)).
 
+Feedback style: mention how they did overall, one strength (e.g. gist vs detail), and one practical study habit for ${level} (e.g. note-taking while listening, skimming before detail questions).
+
 Return ONLY valid JSON — no markdown, no extra text:
 {
   "score": <integer 0-100, must match the rule above>,
-  "feedback": "<2-3 sentences: mention ${skill ?? "this skill"} at ${level}, strengths, one area to improve>"
+  "feedback": "<3-4 sentences; encouraging and actionable>"
 }`;
   }
 
@@ -50,10 +54,12 @@ The test mixed multiple-choice and open-ended responses. JSON includes isCorrect
 
 Compute an overall score 0-100: weight MCQ as 50% (by percent correct) and open tasks as 50% (your holistic judgment of task achievement at ${level}). If only one type is present, use that type only.
 
+Feedback style: balance recognition of MCQ performance with specific comments on open responses; include one clear next step and, if useful, a brief rewrite or phrasing tip for one idea in their open answers.
+
 Return ONLY valid JSON — no markdown, no extra text:
 {
   "score": <integer 0-100>,
-  "feedback": "<2-4 sentences, balanced and actionable>"
+  "feedback": "<3-5 sentences, balanced and actionable>"
 }`;
 }
 

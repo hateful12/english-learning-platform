@@ -20,8 +20,8 @@ export const SKILL_ICONS: Record<AssessmentSkill, string> = {
 };
 
 export const SKILL_BLURBS: Record<AssessmentSkill, string> = {
-  reading: "Short passages and comprehension questions matched to your level.",
-  writing: "Short writing tasks — AI feedback on grammar, vocabulary, and structure.",
-  listening: "Short scripts (as if you heard them) plus comprehension questions.",
-  speaking: "Role-play prompts — type what you would say aloud; AI comments on naturalness and clarity.",
+  reading: "Article- or story-style passages with gist, detail, and vocabulary-in-context — tuned to your CEFR level.",
+  writing: "Real-world writing (messages, emails, short opinions) with feedback on clarity, tone, and accuracy.",
+  listening: "Natural dialogue or monologue scripts plus comprehension checks — spoken English at your level.",
+  speaking: "Everyday scenarios — you type what you would say aloud; feedback focuses on natural, appropriate phrasing.",
 };

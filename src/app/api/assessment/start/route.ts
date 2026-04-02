@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getStudentId } from "@/lib/auth";
-import { isAssessmentSkill } from "@/lib/assessment-skills";
+import { isAssessmentSkill, type AssessmentSkill } from "@/lib/assessment-skills";
+import { buildProgressTestFrameworkBlock } from "@/lib/progress-test-training-framework";
 import {
   createAssessmentOpenAI,
   getOpenAiApiKey,
@@ -17,7 +18,12 @@ function buildMcqPrompt(skill: "reading" | "listening", level: string): string {
       ? `Each question MUST include a short script (2–5 sentences) that simulates something the student would *hear* (dialogue or monologue). Start the question text with a line like "Listen to this:" then the script, then the comprehension question.`
       : `Use 2 short reading passages (about 4–6 sentences each). The first passage should have 4–5 questions, the second passage 4–5 questions. Each question must clearly refer to its passage.`;
 
+  const framework = buildProgressTestFrameworkBlock(skill as AssessmentSkill, level);
+
   return `You are an English language assessment expert. Generate exactly 10 multiple-choice ${skillLabel} questions for a student at CEFR level ${level}.
+
+Follow this training framework:
+${framework}
 
 ${listeningNote}
 
@@ -41,7 +47,12 @@ function buildOpenPrompt(skill: "writing" | "speaking", level: string): string {
       ? `Tasks should cover different writing purposes at ${level}: for example a short email or message, a brief opinion or argument (80–120 words suggested), and describing or summarising a situation.`
       : `Prompts should be realistic spoken scenarios at ${level}: for example giving directions, agreeing/disagreeing politely, making a request, or handling a simple service situation. Ask the student to type what they would *say* aloud (not essay-style).`;
 
+  const framework = buildProgressTestFrameworkBlock(skill as AssessmentSkill, level);
+
   return `You are an English language assessment expert. Generate exactly 3 open-ended ${skill} tasks for a CEFR ${level} student.
+
+Follow this training framework:
+${framework}
 
 ${focus}
 

@@ -1115,7 +1115,7 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
       <div className="flex flex-col items-center justify-center py-16 gap-4">
         <div className="h-12 w-12 rounded-full border-4 border-accent/20 border-t-accent animate-spin" />
         <p className="text-sm text-ink/60">
-          ChatGPT is evaluating your {sk ? `${sk.toLowerCase()} ` : ""}answers…
+          Evaluating your {sk ? `${sk.toLowerCase()} ` : ""}answers…
         </p>
       </div>
     );
@@ -1158,11 +1158,11 @@ function ProgressTestTab({ assignedLevel }: { assignedLevel: string | null | und
     pendingRow?.skill && isAssessmentSkill(pendingRow.skill) ? pendingRow.skill : null;
   const completedHistory = history.filter((a) => a.status === "completed");
 
-  const promptSkillBySkill = `Hi ChatGPT, I'd like to test my English skills one by one. My teacher has placed me at about CEFR level ${assignedLevel}. Please adapt everything to that level.
+  const promptSkillBySkill = `Hi — I'm studying English with a mix of app-based progress checks and chat practice. My teacher set my level at about CEFR ${assignedLevel}. Please keep explanations, tasks, and corrections aligned to that band.
 
-Please start with a short reading passage and ask me some comprehension questions. Then we can move on to writing, listening (you can also use a short YouTube clip I paste), and speaking.`;
+I'd like to work skill by skill. For each session, give me a short warm-up, a focused task (reading, listening from text you provide, writing, or speaking — I will type what I'd say), then 2–3 follow-up questions so I go deeper. When I make a mistake, correct it in bold and say briefly why. If a prompt works well, remind me to save it in my personal prompt library with a one-line note.`;
 
-  const promptJournal = `Hi ChatGPT, can you help me track my English learning progress? Let's start a journal. Please ask me every week what I studied, what I found easy or hard, and help me improve step by step.`;
+  const promptJournal = `Hi — I'd like a simple weekly English journal. Each week, ask me what I studied, what felt easy or hard, and one mistake I want to fix. Summarize patterns you notice, suggest one small goal for next week, and remind me to reuse any prompts that helped. Keep everything at my level when I tell you my CEFR band.`;
 
   // No level assigned by teacher yet
   if (!assignedLevel) {
@@ -1215,9 +1215,11 @@ Please start with a short reading passage and ask me some comprehension question
           <p className="text-xs font-semibold uppercase tracking-wide text-accent/90">Step 1</p>
           <h2 className="text-lg font-semibold text-ink mt-1">Skill-based progress checks</h2>
           <p className="mt-2 text-sm text-ink/60 leading-relaxed">
-            English proficiency is built from <strong>reading</strong>, <strong>writing</strong>, <strong>listening</strong>
-            , and <strong>speaking</strong>. Test each skill separately to see strengths and gaps. Every task is written for
-            your <strong>{assignedLevel}</strong> level (with a gentle mix of slightly easier and slightly harder items).
+            Practice the four core skills the way a good AI tutor would: <strong>real contexts</strong>,{" "}
+            <strong>usable language</strong>, and tasks scaled to <strong>{assignedLevel}</strong> (including a few slightly
+            easier and slightly harder items). Each skill is separate so you see strengths and gaps clearly. If you also use
+            a workbook like Luke Priddy&apos;s &quot;Learn English with AI&quot;, you can mirror the same ideas in ChatGPT
+            alongside these tests.
           </p>
         </div>
         {error && (
@@ -1251,29 +1253,29 @@ Please start with a short reading passage and ask me some comprehension question
         </div>
       </div>
 
-      {/* Step 2 — track progress (ChatGPT journal) */}
+      {/* Step 2 — deeper practice + weekly journal (external assistant) */}
       <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-6 space-y-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-accent/90">Step 2</p>
-          <h2 className="text-lg font-semibold text-ink mt-1">Track your progress with ChatGPT</h2>
+          <h2 className="text-lg font-semibold text-ink mt-1">Go deeper with any AI assistant</h2>
           <p className="mt-2 text-sm text-ink/60 leading-relaxed">
-            Improvement takes time. Use a simple learning journal: review mistakes, notice what felt easy or hard, and set
-            small weekly goals. Paste the prompt below into ChatGPT (or any assistant you use) alongside your in-app
-            tests.
+            Short, repeated practice beats cramming. Use the copyable prompts below in ChatGPT, Claude, or similar: ask
+            follow-ups, save what works in a small prompt library, and keep a weekly journal of what felt easy or hard —
+            the same rhythm many AI-focused study guides recommend.
           </p>
         </div>
         <ul className="text-sm text-ink/65 space-y-1.5 list-disc pl-5">
-          <li>Schedule a short weekly check-in about what you studied.</li>
-          <li>Ask for reminders of past errors and how to fix them.</li>
-          <li>Reflect on topics that were easy vs. difficult.</li>
+          <li>After a test, paste tricky items into your assistant and ask for a mini drill or rewrite.</li>
+          <li>Keep one running note of prompts that produced great explanations or corrections.</li>
+          <li>End each week with a 5-minute reflection on one concrete improvement for next week.</li>
         </ul>
         <div className="grid gap-3 md:grid-cols-2">
-          <CopyablePrompt label="Skill-by-skill (with your level)" text={promptSkillBySkill} />
+          <CopyablePrompt label="Skill-by-skill chat practice (uses your level)" text={promptSkillBySkill} />
           <CopyablePrompt label="Weekly learning journal" text={promptJournal} />
         </div>
         <p className="text-xs text-ink/45">
-          For listening practice outside the app, you can paste a short YouTube link into ChatGPT and ask for a quiz on
-          what was said — combine that with the listening test here.
+          Outside the app, try pasting a short clip transcript or your own sentence into your assistant and ask for tone,
+          collocations, or a quick quiz — then compare with your in-app listening and speaking checks.
         </p>
       </div>
 
