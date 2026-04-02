@@ -17,6 +17,7 @@ model Student {
   level               String?              // CEFR level set by teacher: "A1" "A2" "B1" "B2" "C1" "C2"
   createdAt           DateTime              @default(now())
   homework            Homework[]
+  homeworkReminders   HomeworkReminder[]
   paymentInfos        PaymentInfo[]
   invites             Invite[]
   homeworkResponses   HomeworkResponse[]
@@ -63,6 +64,21 @@ model Homework {
   student     Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
   group       Group?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
   responses   HomeworkResponse[]
+  reminders   HomeworkReminder[]
+}
+
+// Email reminder the evening (17:00 local) before the calendar day of the student's next lesson
+model HomeworkReminder {
+  id          String    @id @default(cuid())
+  homeworkId  String
+  studentId   String
+  scheduledAt DateTime
+  sentAt      DateTime?
+  lessonId    String?
+  createdAt   DateTime  @default(now())
+  homework    Homework  @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  @@unique([homeworkId, studentId])
 }
 
 model HomeworkResponse {

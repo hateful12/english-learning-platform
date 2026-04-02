@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { isTeacherLoggedIn, getStudentId } from "@/lib/auth";
+import { scheduleRemindersForNewHomework } from "@/lib/homework-reminders";
 
 export async function GET() {
   try {
@@ -239,6 +240,14 @@ export async function POST(request: NextRequest) {
     // Set groupId via raw SQL if provided
     if (groupId && typeof groupId === "string") {
       await prisma.$executeRaw`UPDATE "Homework" SET groupId = ${groupId} WHERE id = ${item.id}`;
+    }
+
+    const sid = studentId && typeof studentId === "string" ? studentId : null;
+    const gid = groupId && typeof groupId === "string" ? groupId : null;
+    try {
+      await scheduleRemindersForNewHomework(item.id, sid, gid);
+    } catch (e) {
+      console.error("scheduleRemindersForNewHomework:", e);
     }
 
     return NextResponse.json({ ...item, groupId: (groupId as string) || null });
