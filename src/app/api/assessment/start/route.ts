@@ -3,8 +3,7 @@ import { prisma } from "@/lib/db";
 import { getStudentId } from "@/lib/auth";
 import OpenAI from "openai";
 import { isAssessmentSkill } from "@/lib/assessment-skills";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
+import { getOpenAiApiKey, openAiInvalidKeyMessage, openAiNotConfiguredMessage } from "@/lib/openai-key";
 
 function buildMcqPrompt(skill: "reading" | "listening", level: string): string {
   const skillLabel = skill === "reading" ? "reading comprehension" : "listening comprehension";
@@ -84,13 +83,11 @@ function normalizeOpen(raw: unknown): RawOpen | null {
 
 export async function POST(request: NextRequest) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    const apiKey = getOpenAiApiKey();
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "Assessment service is not configured. Add OPENAI_API_KEY to .env on the server and run: pm2 restart english-app" },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: openAiNotConfiguredMessage() }, { status: 503 });
     }
+    const openai = new OpenAI({ apiKey });
     const studentId = await getStudentId();
     if (!studentId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -257,10 +254,7 @@ export async function POST(request: NextRequest) {
       );
     }
     if (status === 401) {
-      return NextResponse.json(
-        { error: "Invalid OpenAI API key. The teacher must set OPENAI_API_KEY in .env and restart the app (pm2 restart)." },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: openAiInvalidKeyMessage() }, { status: 503 });
     }
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(

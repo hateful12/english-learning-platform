@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getStudentId } from "@/lib/auth";
 import OpenAI from "openai";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
+import { getOpenAiApiKey, openAiInvalidKeyMessage, openAiNotConfiguredMessage } from "@/lib/openai-key";
 
 function buildEvaluatePrompt(params: {
   level: string;
@@ -63,13 +62,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    const apiKey = getOpenAiApiKey();
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "Assessment service is not configured. Add OPENAI_API_KEY to .env on the server and run: pm2 restart english-app" },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: openAiNotConfiguredMessage() }, { status: 503 });
     }
+    const openai = new OpenAI({ apiKey });
     const { id: assessmentId } = await params;
     const studentId = await getStudentId();
     if (!studentId) {
@@ -234,10 +231,7 @@ export async function POST(
       );
     }
     if (status === 401) {
-      return NextResponse.json(
-        { error: "Invalid OpenAI API key. The teacher must set OPENAI_API_KEY in .env and restart the app (pm2 restart)." },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: openAiInvalidKeyMessage() }, { status: 503 });
     }
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(

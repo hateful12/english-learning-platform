@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isTeacherLoggedIn } from "@/lib/auth";
+import { getOpenAiApiKey, openAiNotConfiguredMessage } from "@/lib/openai-key";
 
 /** Teacher-only: check if assessment (OpenAI) is configured. */
 export async function GET() {
@@ -7,11 +8,11 @@ export async function GET() {
   if (!teacher) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const configured = !!process.env.OPENAI_API_KEY?.trim();
+  const configured = !!getOpenAiApiKey();
   return NextResponse.json({
     configured,
     hint: configured
       ? "API key is set. If students still see errors, the key may be invalid or expired."
-      : "Add OPENAI_API_KEY to .env and run: pm2 restart english-app",
+      : openAiNotConfiguredMessage(),
   });
 }
