@@ -125,7 +125,6 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   const [uploadingTaskId, setUploadingTaskId] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordChunksRef = useRef<BlobPart[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const filePickTaskIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -153,16 +152,21 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
     stopRecording();
   }
 
+  /** Ends capture; chunks are finalized in MediaRecorder `onstop` — do not clear chunks or stop the stream here. */
   function stopRecording() {
-    try {
-      mediaRecorderRef.current?.stop();
-    } catch {
-      /* ignore */
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== "inactive") {
+      try {
+        if (typeof mr.requestData === "function") mr.requestData();
+        mr.stop();
+      } catch {
+        /* ignore */
+      }
+    } else {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
     }
     mediaRecorderRef.current = null;
-    recordChunksRef.current = [];
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
     setRecordingTaskId(null);
   }
 
@@ -175,19 +179,22 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
       const preferredTypes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
       const mimeType = preferredTypes.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
       const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      recordChunksRef.current = [];
+      const chunks: Blob[] = [];
       mr.ondataavailable = (e) => {
-        if (e.data.size > 0) recordChunksRef.current.push(e.data);
+        if (e.data.size > 0) chunks.push(e.data);
       };
       mr.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
-        const blob = new Blob(recordChunksRef.current, { type: mr.mimeType || "audio/webm" });
-        recordChunksRef.current = [];
+        const blob = new Blob(chunks, { type: mr.mimeType || "audio/webm" });
         const ext = blob.type.includes("mp4") ? "m4a" : "webm";
         const file = new File([blob], `speaking-${taskId}.${ext}`, { type: blob.type || "audio/webm" });
+        if (blob.size < 256) {
+          setError("Recording was empty or too short. Try again and speak for at least a second before stopping.");
+          setRecordingTaskId(null);
+          return;
+        }
         void uploadAudioForTask(taskId, file);
-        mediaRecorderRef.current = null;
         setRecordingTaskId(null);
       };
       mr.start(200);
