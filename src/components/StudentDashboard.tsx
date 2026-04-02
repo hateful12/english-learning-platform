@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ScheduleViewer } from "./ScheduleViewer";
-import { LearnEnglishAiTab } from "./LearnEnglishAiTab";
 import { WordleTab } from "./WordleTab";
 import { EmojiPicker } from "./EmojiPicker";
 import { LinkifiedText } from "./LinkifiedText";
@@ -31,13 +30,28 @@ type Homework = {
 
 type Tab = "schedule" | "homework" | "payments" | "learn-ai" | "games";
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
+const TABS: { id: Tab; label: string; icon: string; comingSoon?: boolean }[] = [
   { id: "schedule", label: "Schedule", icon: "📅" },
   { id: "homework", label: "Homework", icon: "📝" },
   { id: "payments", label: "Payments", icon: "💳" },
-  { id: "learn-ai", label: "Fluent Lab", icon: "✨" },
+  { id: "learn-ai", label: "Fluent Lab", icon: "✨", comingSoon: true },
   { id: "games", label: "Games", icon: "🎮" },
 ];
+
+function FluentLabComingSoon() {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+      <span className="text-5xl mb-4" aria-hidden>✨</span>
+      <h3 className="font-serif text-xl font-semibold text-ink">Fluent Lab</h3>
+      <p className="mt-3 max-w-md text-sm text-ink/65 leading-relaxed">
+        AI-powered practice for your level is on the way. Check back soon.
+      </p>
+      <span className="mt-6 inline-flex items-center rounded-full border border-accent/25 bg-accent/8 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent">
+        Coming soon
+      </span>
+    </div>
+  );
+}
 
 function parseAttachments(item: Homework): HomeworkAttachment[] {
   try {
@@ -415,6 +429,11 @@ export function StudentDashboard() {
           >
             <span className="text-base leading-none">{tab.icon}</span>
             <span className="hidden sm:inline">{tab.label}</span>
+            {tab.comingSoon && (
+              <span className="hidden sm:inline rounded bg-ink/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink/45">
+                Soon
+              </span>
+            )}
             {tab.id === "homework" && activeHomework.length > 0 && (
               <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-bold text-white leading-none">
                 {activeHomework.length}
@@ -460,7 +479,7 @@ export function StudentDashboard() {
           />
         )}
 
-        {activeTab === "learn-ai" && <LearnEnglishAiTab assignedLevel={studentInfo?.level ?? null} />}
+        {activeTab === "learn-ai" && <FluentLabComingSoon />}
 
         {/* Games */}
         {activeTab === "games" && (

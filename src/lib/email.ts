@@ -2,24 +2,38 @@ import nodemailer from "nodemailer";
 
 type SendResult = { ok: true } | { ok: false; error: string };
 
-/** Default “from” account when `GMAIL_USER` is not set. */
-const DEFAULT_GMAIL_USER = "irenn.boiko@gmail.com";
+/**
+ * Gmail / SMTP user. Prefer setting `GMAIL_USER` or `EMAIL_USER` in `.env.local`.
+ */
+function resolveMailUser(): string | undefined {
+  const u =
+    process.env.GMAIL_USER ??
+    process.env.EMAIL_USER ??
+    process.env.SMTP_USER ??
+    process.env.MAIL_USER;
+  const t = u != null ? String(u).trim() : "";
+  return t || undefined;
+}
 
 /**
- * Gmail app password from env. Tries several keys; strips spaces (Google shows `xxxx xxxx xxxx xxxx`).
+ * App password or SMTP password. Tries several keys; strips spaces (Google shows `xxxx xxxx xxxx xxxx`).
  */
-function resolveGmailAppPassword(): string | undefined {
+function resolveMailPassword(): string | undefined {
   const raw =
     process.env.GMAIL_APP_PASSWORD ??
     process.env.GMAIL_PASSWORD ??
-    process.env.EMAIL_APP_PASSWORD;
+    process.env.EMAIL_APP_PASSWORD ??
+    process.env.SMTP_PASS ??
+    process.env.SMTP_PASSWORD ??
+    process.env.EMAIL_PASSWORD ??
+    process.env.MAIL_PASSWORD;
   if (raw == null || !String(raw).trim()) return undefined;
   return String(raw).replace(/\s/g, "");
 }
 
 /**
  * Sends via Gmail SMTP (Google Account → App passwords).
- * Set `GMAIL_APP_PASSWORD` in `.env.local` (server restart required). Optional: `GMAIL_USER`.
+ * Set in `.env.local` (server restart required): mail user (`GMAIL_USER` or `EMAIL_USER`) and app password (`GMAIL_APP_PASSWORD` or `SMTP_PASS`).
  * Local testing without mail: `HOMEWORK_REMINDER_LOG_ONLY=1`.
  */
 export async function sendTransactionalEmail(opts: {
@@ -32,18 +46,27 @@ export async function sendTransactionalEmail(opts: {
     return { ok: true };
   }
 
-  const user = process.env.GMAIL_USER?.trim() || DEFAULT_GMAIL_USER;
-  const pass = resolveGmailAppPassword();
+  const user = resolveMailUser();
+  const pass = resolveMailPassword();
+  if (!user) {
+    return {
+      ok: false,
+      error:
+        "Mail user missing: set GMAIL_USER or EMAIL_USER in .env.local (same address you created the app password for), then restart the server",
+    };
+  }
   if (!pass) {
     return {
       ok: false,
       error:
-        "Gmail app password missing: set GMAIL_APP_PASSWORD in .env.local (see .env.example), then restart `npm run dev`",
+        "Mail password missing: set GMAIL_APP_PASSWORD (or SMTP_PASS / EMAIL_APP_PASSWORD) in .env.local, then restart the server",
     };
   }
 
   const transporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
     auth: { user, pass },
   });
 

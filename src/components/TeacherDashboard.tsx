@@ -514,6 +514,33 @@ function StudentRow({
   const [tempPassword, setTempPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordMsg, setPasswordMsg] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function deleteStudent() {
+    if (
+      !window.confirm(
+        `Remove student ${student.email}? Their homework responses, schedule links, and payments in this app will be deleted. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/students", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: student.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert((data as { error?: string }).error ?? "Could not delete student");
+        return;
+      }
+      onUpdate();
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function savePrice() {
     setSavingPrice(true);
@@ -663,6 +690,16 @@ function StudentRow({
           title="Set a new password if the student forgot theirs"
         >
           {showPasswordReset ? "Close" : "New password"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => void deleteStudent()}
+          disabled={deleting}
+          className="text-xs text-red-600/90 hover:text-red-700 border border-dashed border-red-200 rounded px-2 py-0.5 hover:border-red-300 transition-colors disabled:opacity-50"
+          title="Permanently remove this student from the app"
+        >
+          {deleting ? "Removing…" : "Delete student"}
         </button>
       </div>
       </div>

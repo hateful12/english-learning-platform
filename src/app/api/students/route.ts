@@ -86,3 +86,29 @@ export async function PATCH(request: NextRequest) {
 
   return NextResponse.json(updated);
 }
+
+export async function DELETE(request: NextRequest) {
+  const loggedIn = await isTeacherLoggedIn();
+  if (!loggedIn) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const id = (body as Record<string, unknown>)?.id;
+  if (typeof id !== "string") return NextResponse.json({ error: "id required" }, { status: 400 });
+
+  const existing = await prisma.student.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) return NextResponse.json({ error: "Student not found" }, { status: 404 });
+
+  await prisma.$transaction([
+    prisma.$executeRaw`DELETE FROM "HomeworkStudentClose" WHERE studentId = ${id}`,
+    prisma.$executeRaw`DELETE FROM "HomeworkStudentHide" WHERE studentId = ${id}`,
+    prisma.student.delete({ where: { id } }),
+  ]);
+
+  return NextResponse.json({ ok: true });
+}
