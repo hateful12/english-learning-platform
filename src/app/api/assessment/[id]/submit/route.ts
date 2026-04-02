@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getStudentId } from "@/lib/auth";
-import OpenAI from "openai";
 import {
+  createAssessmentOpenAI,
   getOpenAiApiKey,
   isOpenAiAuthFailure,
   openAiInvalidKeyMessage,
@@ -66,12 +66,13 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let resolvedKey: string | undefined;
   try {
-    const apiKey = getOpenAiApiKey();
-    if (!apiKey) {
+    resolvedKey = getOpenAiApiKey();
+    if (!resolvedKey) {
       return NextResponse.json({ error: openAiNotConfiguredMessage() }, { status: 503 });
     }
-    const openai = new OpenAI({ apiKey });
+    const openai = createAssessmentOpenAI(resolvedKey);
     const { id: assessmentId } = await params;
     const studentId = await getStudentId();
     if (!studentId) {
@@ -236,7 +237,7 @@ export async function POST(
       );
     }
     if (isOpenAiAuthFailure(err)) {
-      return NextResponse.json({ error: openAiInvalidKeyMessage() }, { status: 503 });
+      return NextResponse.json({ error: openAiInvalidKeyMessage(resolvedKey) }, { status: 503 });
     }
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
