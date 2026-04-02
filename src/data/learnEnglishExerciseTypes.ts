@@ -20,9 +20,9 @@ export const EXERCISE_TYPES: ExerciseTypeDef[] = [
   {
     id: "reading",
     title: "Reading",
-    description: "Short texts with questions on gist, detail, and vocabulary.",
-    focus: "reading comprehension: gist, detail, and vocabulary in context",
-    availableSoon: true,
+    description: "Read short texts aloud, record your voice, and get feedback on your reading.",
+    focus:
+      "read-aloud practice: the student reads printed English passages aloud, submits a voice recording per task (transcribed for review); feedback on accuracy, fluency, and clarity compared to the target text",
   },
   {
     id: "grammar",

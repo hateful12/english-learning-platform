@@ -159,13 +159,33 @@ function buildGenerateUserMessage(
       ? "\nThis is speaking practice: use prompts the student can answer in 20–40 seconds of speech (opinion, describe, role-play cue). They may answer by voice recording or typing.\n"
       : "";
 
-  const depth = cefrTaskDepthGuidance(level);
+  const readingNote =
+    exerciseId === "reading"
+      ? `
+Read-aloud mode (critical):
+- All 4 tasks must follow the same pattern: give a short English passage **in quotes** for the student to read **aloud**, and tell them clearly to **record their voice** reading that text (optional tiny written note only).
+- Passage length: about 15–45 seconds of reading at this CEFR level (very short lines for A1–A2; short paragraphs for B1+).
+- Vary styles: dialogue line, notice, description, mini-story — but do **not** switch to comprehension quizzes, gap-fills, or “answer a question” as the main task. The main task is always: read this printed text aloud and submit the recording.
+- The introduction must explain that they will read each text aloud and upload/record their reading for AI feedback.
+`
+      : "";
+
+  const depth =
+    exerciseId === "reading"
+      ? `CEFR ${level} — read-aloud passages only; match vocabulary and length to the band.`
+      : cefrTaskDepthGuidance(level);
   const grammarNote = grammarInUseVarietyNote(exerciseId, focusNote);
+
+  const taskStyleRules =
+    exerciseId === "reading"
+      ? `- All tasks are read-aloud of quoted text; recordings will be transcribed and compared to the target wording.`
+      : `- Mix task styles: short answer, grammar transforms, MCQ in text, etc. Text only — do not ask the student to look at a picture or photo.
+- English example sentences in tasks must stay inside 'single' or "double" quotes when you give a sentence for the student to read or analyse.`;
 
   return `Create short English practice for one student at CEFR ${level}.
 
 Exercise type / focus: ${exerciseFocus}
-${speakingNote}${focusNote?.trim() ? `Student note (honour if sensible): ${focusNote.trim()}\n` : ""}
+${speakingNote}${readingNote}${focusNote?.trim() ? `Student note (honour if sensible): ${focusNote.trim()}\n` : ""}
 ${grammarNote}
 Task depth (follow closely):
 ${depth}
@@ -174,8 +194,7 @@ Rules:
 - Exactly 4 tasks (not 3, not 5).
 - Each task completable in about 1 minute; keep questions self-contained (no long passages).
 - Difficulty and instructions must match ${level}.
-- Mix task styles: short answer, grammar transforms, MCQ in text, etc. Text only — do not ask the student to look at a picture or photo.
-- English example sentences in tasks must stay inside 'single' or "double" quotes when you give a sentence for the student to read or analyse.
+${taskStyleRules}
 
 Return ONLY valid JSON (no markdown code fences), shape:
 {"title":"string","introduction":"one short paragraph for the student","tasks":[{"id":"t1","question":"..."},{"id":"t2","question":"..."},{"id":"t3","question":"..."},{"id":"t4","question":"..."}]}`;
@@ -255,6 +274,8 @@ export async function POST(request: NextRequest) {
       const tasks = body?.tasks;
       const answers = body?.answers;
       const audioUrlsRaw = body?.audioUrls;
+      const exerciseTypeIdFb =
+        typeof body?.exerciseTypeId === "string" ? body.exerciseTypeId.trim().slice(0, 64) : "";
 
       if (!title || !introduction || !Array.isArray(tasks) || !answers || typeof answers !== "object") {
         return NextResponse.json({ error: "Invalid exercise payload" }, { status: 400 });
@@ -311,13 +332,24 @@ export async function POST(request: NextRequest) {
 
       const idsInOrder = payload.map((p) => p.id).join(", ");
 
+      const readAloudFeedbackBlock =
+        exerciseTypeIdFb === "reading"
+          ? `
+
+Read-aloud exercise: the student was asked to read quoted English passages aloud. Their submission is a voice recording transcribed by Whisper and appears under [Voice answer, transcribed] (and optional written notes). Extract or infer the **target passage** from the task question (text in quotes). In feedback and tips:
+- Compare transcription to the target: missed words, extra words, substitutions, word order slips.
+- Comment on likely clarity/fluency only from what the transcript suggests (do not claim to have heard audio).
+- For correctedVersion when useful, show the target wording or a clean read-through, with **double-asterisk bold** only on parts they should fix.
+`
+          : "";
+
       const userContent = `You are a supportive English teacher. Student level: CEFR ${level}.
 
 Exercise title: ${title}
 Introduction you gave the student: ${introduction}
 
 Tasks and student answers (JSON). Voice answers are already transcribed into the answer text where applicable.
-${JSON.stringify(payload)}
+${JSON.stringify(payload)}${readAloudFeedbackBlock}
 
 Return ONLY valid JSON (no markdown code fences), exactly this shape:
 {

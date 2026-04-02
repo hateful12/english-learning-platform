@@ -477,6 +477,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
         body: JSON.stringify({
           phase: "feedback",
           level: active.level,
+          exerciseTypeId: active.exerciseTypeId,
           title: active.title,
           introduction: active.introduction,
           tasks: active.tasks,
@@ -529,12 +530,17 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   }
 
   const isSpeakingPrep = active?.exerciseTypeId === "speaking-prep";
+  const isReadingAloud = active?.exerciseTypeId === "reading";
+  const usesVoiceUi = isSpeakingPrep || isReadingAloud;
 
   const allAnswered =
     active &&
     active.tasks.length > 0 &&
     active.tasks.every((t) => {
       const text = (answers[t.id] ?? "").trim();
+      if (isReadingAloud) {
+        return !!audioByTask[t.id]?.url;
+      }
       if (isSpeakingPrep) {
         return text.length > 0 || !!audioByTask[t.id]?.url;
       }
@@ -637,12 +643,19 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-accent">Your exercise</p>
               <div className="mt-1 flex items-center gap-2 min-w-0">
-                {active.exerciseTypeId === "speaking-prep" ? (
+                {active.exerciseTypeId === "speaking-prep" || active.exerciseTypeId === "reading" ? (
                   <span
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent"
-                    title="Speaking — use your voice or type"
+                    title={
+                      active.exerciseTypeId === "reading"
+                        ? "Read the text aloud, then record"
+                        : "Speaking — use your voice or type"
+                    }
                   >
-                    <ExerciseTypeGlyph exerciseId="speaking-prep" className="h-5 w-5" />
+                    <ExerciseTypeGlyph
+                      exerciseId={active.exerciseTypeId}
+                      className="h-5 w-5"
+                    />
                   </span>
                 ) : null}
                 <h4 className="font-serif text-lg font-semibold text-ink min-w-0">{active.title}</h4>
@@ -660,8 +673,8 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
                   {!ukTranslation ? (
                     <p className="mt-3 text-sm text-ink/70 rounded-lg border border-sky-200/80 bg-sky-50/50 px-3 py-2">
                       <span className="font-medium text-ink">Складно читати англійською?</span> Натисніть «Перекласти
-                      опис українською» — зʼявиться допомога українською. Відповіді все одно давайте англійською (або
-                      голосом у Speaking practice).
+                      опис українською» — зʼявиться допомога українською. Відповіді все одно давайте англійською або
+                      записом голосу.
                     </p>
                   ) : null}
                   <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -716,17 +729,33 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
                         [t.id]: e.target.value,
                       }))
                     }
-                    rows={isSpeakingPrep ? 2 : 3}
+                    rows={usesVoiceUi ? 2 : 3}
                     disabled={loading}
-                    placeholder={isSpeakingPrep ? "Optional if you send audio…" : "Your answer…"}
+                    placeholder={
+                      isReadingAloud
+                        ? "Optional note — your reading must be submitted as a recording below."
+                        : isSpeakingPrep
+                          ? "Optional if you send audio…"
+                          : "Your answer…"
+                    }
                     className="input w-full text-sm resize-y min-h-[72px]"
                   />
 
-                  {isSpeakingPrep && (
+                  {usesVoiceUi && (
                     <div className="mt-2 rounded-lg border border-ink/10 bg-white/60 p-3 space-y-2">
                       <p className="text-xs text-ink/60">
-                        <span className="font-medium text-ink/75">Voice answer:</span> record here or upload an audio
-                        file. You can use voice only, text only, or both.
+                        {isReadingAloud ? (
+                          <>
+                            <span className="font-medium text-ink/75">Your reading (required):</span> read the passage
+                            above aloud, then record here or upload audio. Feedback uses your recording (and optional
+                            note).
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-medium text-ink/75">Voice answer:</span> record here or upload an
+                            audio file. You can use voice only, text only, or both.
+                          </>
+                        )}
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {recordingTaskId === t.id ? (
@@ -786,13 +815,15 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
               disabled={loading || !allAnswered}
               className="btn-primary"
             >
-              {loading ? "Checking…" : "Check my answers"}
+              {loading ? "Checking…" : isReadingAloud ? "Get feedback" : "Check my answers"}
             </button>
             {!allAnswered && (
               <span className="text-xs text-ink/50 self-center">
-                {isSpeakingPrep
-                  ? "For each task, add text and/or audio before checking."
-                  : "Answer every task to get feedback."}
+                {isReadingAloud
+                  ? "Each task needs a recording of you reading the passage aloud."
+                  : isSpeakingPrep
+                    ? "For each task, add text and/or audio before checking."
+                    : "Answer every task to get feedback."}
               </span>
             )}
           </div>
