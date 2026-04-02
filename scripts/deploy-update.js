@@ -10,7 +10,7 @@ const { Client } = require("ssh2");
 const HOST = "194.61.52.14";
 const USER = "root";
 const PASSWORD = "zCpHfwfemQd4X03";
-const BRANCH = "feature/wordle-game";
+const BRANCH = process.env.DEPLOY_BRANCH || "feat/learn-english-ai-tab";
 const APP_DIR = "/var/www/english-app";
 
 function run(conn, cmd, label) {
@@ -56,8 +56,8 @@ async function main() {
   try {
     await run(
       conn,
-      `cd ${APP_DIR} && git pull origin ${BRANCH}`,
-      "1. Git pull"
+      `cd ${APP_DIR} && git fetch origin && git checkout ${BRANCH} && git reset --hard origin/${BRANCH}`,
+      "1. Git sync to origin branch"
     );
     await run(conn, `cd ${APP_DIR} && npm ci`, "2. npm ci");
     await run(conn, `cd ${APP_DIR} && npx prisma db push`, "3. Prisma db push");

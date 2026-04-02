@@ -16,12 +16,6 @@ body {
 }
 
 @layer components {
-  .header-london-bg {
-    background-image: url("/header-london-skyline.png");
-    background-size: cover;
-    background-position: center bottom;
-    background-repeat: no-repeat;
-  }
   .card {
     @apply rounded-xl border border-ink/10 bg-white/80 shadow-sm backdrop-blur;
   }
