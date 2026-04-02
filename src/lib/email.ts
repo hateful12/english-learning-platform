@@ -1,35 +1,46 @@
+import nodemailer from "nodemailer";
+
 type SendResult = { ok: true } | { ok: false; error: string };
 
+/** Default “from” account when `GMAIL_USER` is not set. */
+const DEFAULT_GMAIL_USER = "irenn.boiko@gmail.com";
+
 /**
- * Sends via Resend when `RESEND_API_KEY` is set.
- * For local testing without mail, set `HOMEWORK_REMINDER_LOG_ONLY=1` to log and treat as success.
+ * Sends via Gmail SMTP (Google Account → App passwords).
+ * Set `GMAIL_APP_PASSWORD` in `.env.local` / server env. Optional `GMAIL_USER` overrides the sender.
+ * Local testing without mail: `HOMEWORK_REMINDER_LOG_ONLY=1`.
  */
 export async function sendTransactionalEmail(opts: {
   to: string;
   subject: string;
   html: string;
 }): Promise<SendResult> {
-  const key = process.env.RESEND_API_KEY?.trim();
-  if (!key) {
-    if (process.env.HOMEWORK_REMINDER_LOG_ONLY === "1") {
-      console.log("[email:log-only]", { to: opts.to, subject: opts.subject });
-      return { ok: true };
-    }
-    return { ok: false, error: "RESEND_API_KEY not configured" };
+  if (process.env.HOMEWORK_REMINDER_LOG_ONLY === "1") {
+    console.log("[email:log-only]", { to: opts.to, subject: opts.subject });
+    return { ok: true };
   }
 
-  const from =
-    process.env.RESEND_FROM_EMAIL?.trim() || "English platform <onboarding@resend.dev>";
+  const user = process.env.GMAIL_USER?.trim() || DEFAULT_GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD?.trim();
+  if (!pass) {
+    return { ok: false, error: "GMAIL_APP_PASSWORD not configured" };
+  }
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: opts.to, subject: opts.subject, html: opts.html }),
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user, pass },
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    return { ok: false, error: text || res.statusText };
+  try {
+    await transporter.sendMail({
+      from: user,
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+    });
+    return { ok: true };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: message };
   }
-  return { ok: true };
 }
