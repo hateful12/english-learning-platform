@@ -8,7 +8,7 @@ export type ExerciseTypeDef = {
   availableSoon?: boolean;
 };
 
-/** Types shown in the student AI practice tab (other skills are hidden for now). */
+/** Types shown in the student Fluent Lab tab (other skills are hidden for now). */
 export const EXERCISE_TYPES: ExerciseTypeDef[] = [
   {
     id: "speaking-prep",

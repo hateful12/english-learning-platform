@@ -34,7 +34,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "schedule", label: "Schedule", icon: "📅" },
   { id: "homework", label: "Homework", icon: "📝" },
   { id: "payments", label: "Payments", icon: "💳" },
-  { id: "learn-ai", label: "AI practice", icon: "🤖" },
+  { id: "learn-ai", label: "Fluent Lab", icon: "✨" },
   { id: "games", label: "Games", icon: "🎮" },
 ];
 

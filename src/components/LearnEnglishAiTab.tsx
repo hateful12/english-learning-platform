@@ -320,7 +320,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
     if (!def) return;
     const cefr = levelFromTeacher(assignedLevel);
     if (!cefr) {
-      setError("Your CEFR level isn’t set yet, so AI practice can’t start.");
+      setError("Your CEFR level isn’t set yet, so Fluent Lab can’t start.");
       return;
     }
     const requestId = ++generateRequestIdRef.current;
@@ -573,7 +573,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
       />
 
       <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-4 md:p-5">
-        <h3 className="font-serif text-lg font-semibold text-ink">AI practice exercises</h3>
+        <h3 className="font-serif text-lg font-semibold text-ink">Fluent Lab exercises</h3>
         <p className="mt-2 text-sm text-ink/70 max-w-2xl">
           Short tasks matched to your level. Do them in a few minutes, then get clear feedback.
         </p>
@@ -584,7 +584,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
           </p>
         ) : (
           <p className="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-200/90 rounded-lg px-3 py-2">
-            Your CEFR level isn’t on your profile yet, so AI practice can’t start here.
+            Your CEFR level isn’t on your profile yet, so Fluent Lab can’t start here.
           </p>
         )}
         <div className="mt-4 max-w-2xl flex flex-col gap-2">
