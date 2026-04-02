@@ -126,9 +126,9 @@ function cefrTaskDepthGuidance(level: string): string {
   if (L === "B1") {
     return `CEFR B1 — tasks must feel like solid intermediate practice, NOT like A2.
 - Ban "read one sentence and copy the obvious fact" (e.g. if the text says she plays the piano, do NOT ask only "What activity does she enjoy?" — that is too primitive).
-- Prefer: 2–3 short sentences OR a tiny dialogue/note; then ask for inference, paraphrase in your own words, a reason or consequence, a quick opinion with one clause of support, comparing two ideas, predicting what happens next, or reformulating (e.g. passive, reported speech, conditional) while keeping language B1-appropriate.
+- Prefer: 2–3 short sentences OR a tiny dialogue/note; then ask for inference, paraphrase in your own words, a reason or consequence, a quick opinion with one clause of support, comparing two ideas, predicting what happens next, or reformulating (e.g. passive, different tense, conditional) while keeping language B1-appropriate.
 - At least 2 tasks should require the student to produce a phrase or short sentence that is not spelled out verbatim in the prompt.
-- Vocabulary and grammar: present perfect vs past, modals (might/should), linking (although, because, so), reported speech light, comparatives, real conditionals.`;
+- Vary grammar angles across tasks: present perfect vs past, modals (might/should), linking (although, because, so), comparatives, real conditionals, articles, prepositions — do **not** lean on one favourite pattern for every task.`;
   }
   if (L === "B2") {
     return `CEFR B2 — nuanced short texts or viewpoints; evaluate tone/intention, summarise, counter-argument, precise vocabulary choice, mixed conditionals, passive reporting, hedging language. Avoid trivial one-line factual recall unless it supports a harder follow-up.`;
@@ -137,6 +137,18 @@ function cefrTaskDepthGuidance(level: string): string {
     return `CEFR ${L} — sophisticated prompts: abstraction, stance-taking, subtle implication, register, cohesion across a short paragraph, precise reformulation, and idiomatic but natural English.`;
   }
   return `Match task depth to CEFR ${level}: stretch the student without going far above the band.`;
+}
+
+function grammarInUseVarietyNote(exerciseId: string, focusNote: string | undefined): string {
+  if (exerciseId !== "grammar") return "";
+  const note = focusNote?.trim() ?? "";
+  const wantsReported = /reported|indirect speech|indirect style/i.test(note);
+  return `
+Grammar-in-use (follow closely):
+- Each of the 4 tasks must practise a **different** grammar point suited to this level (examples by level, pick diverse types: tense/aspect, modals, passive vs active, conditionals, relative clauses, prepositions, gerund vs infinitive, comparatives/superlatives, articles, word order, question tags, etc.).
+- **Do not** reuse the same template for every task. In particular, do **not** end most tasks with "rewrite in reported speech", "how would you say this in reported style?", or anything that makes reported/indirect speech the default drill.
+${wantsReported ? `- Student note mentions reported/indirect speech: you may use **up to two** tasks on that topic; the other tasks must still use different grammar points.` : "- At most **one** task may focus on reported or indirect speech (unless the student note above clearly asks for reported/indirect speech — then follow the line above)."}
+`;
 }
 
 function buildGenerateUserMessage(
@@ -151,12 +163,13 @@ function buildGenerateUserMessage(
       : "";
 
   const depth = cefrTaskDepthGuidance(level);
+  const grammarNote = grammarInUseVarietyNote(exerciseId, focusNote);
 
   return `Create short English practice for one student at CEFR ${level}.
 
 Exercise type / focus: ${exerciseFocus}
 ${speakingNote}${focusNote?.trim() ? `Student note (honour if sensible): ${focusNote.trim()}\n` : ""}
-
+${grammarNote}
 Task depth (follow closely):
 ${depth}
 
@@ -208,7 +221,7 @@ export async function POST(request: NextRequest) {
           {
             role: "system",
             content:
-              "You write concise English learning exercises. Calibrate cognitive demand to the CEFR level: B1 and above must not collapse into single-sentence literal recall. Output only valid JSON as requested. No markdown.",
+              "You write concise English learning exercises. Calibrate cognitive demand to the CEFR level: B1 and above must not collapse into single-sentence literal recall. For grammar exercises, vary the grammar focus across tasks — do not default every item to reported speech. Output only valid JSON as requested. No markdown.",
           },
           {
             role: "user",

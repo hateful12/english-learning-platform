@@ -11,7 +11,8 @@ export const EXERCISE_TYPES: ExerciseTypeDef[] = [
     id: "grammar",
     title: "Grammar in use",
     description: "Tenses, prepositions, word order, and sentence patterns.",
-    focus: "grammar and sentence structure appropriate to the CEFR level",
+    focus:
+      "varied grammar practice: different structures per task (tenses, modals, passive, conditionals, prepositions, clauses, etc.) — not the same transformation drill repeated",
   },
   {
     id: "vocabulary",
