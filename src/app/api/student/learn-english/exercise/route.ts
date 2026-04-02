@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { getStudentId } from "@/lib/auth";
 import { parseStructuredFeedback } from "@/lib/exercise-feedback";
+import { sanitizeImageTags } from "@/lib/exercise-image-url";
 import {
   createAssessmentOpenAI,
   getOpenAiApiKey,
@@ -26,7 +27,7 @@ function stripJsonFence(s: string): string {
     .trim();
 }
 
-type Task = { id: string; question: string };
+type Task = { id: string; question: string; imageTags?: string };
 
 function resolveHomeworkUploadFilePath(publicUrl: string): string | null {
   if (typeof publicUrl !== "string" || !publicUrl.startsWith("/uploads/homework/")) return null;
@@ -62,10 +63,14 @@ function parseGeneratedExercise(content: string): { title: string; introduction:
       if (!item || typeof item !== "object") continue;
       const id = (item as { id?: unknown }).id;
       const question = (item as { question?: unknown }).question;
+      const imageTagsRaw = (item as { imageTags?: unknown }).imageTags;
       if (typeof id !== "string" || typeof question !== "string") continue;
       const tid = id.trim();
       const q = question.trim();
-      if (tid && q) tasks.push({ id: tid, question: q });
+      if (tid && q) {
+        const imageTags = sanitizeImageTags(imageTagsRaw);
+        tasks.push(imageTags ? { id: tid, question: q, imageTags } : { id: tid, question: q });
+      }
     }
     if (tasks.length < 3 || tasks.length > 6) return null;
     return {
@@ -113,6 +118,27 @@ function parseUkrainianTranslation(content: string): {
   }
 }
 
+function cefrTaskDepthGuidance(level: string): string {
+  const L = level.toUpperCase();
+  if (L === "A1" || L === "A2") {
+    return `CEFR ${L} — keep tasks concrete: very short sentences, basic vocabulary, mostly literal comprehension (who/what/where), simple gaps, and picture naming where useful.`;
+  }
+  if (L === "B1") {
+    return `CEFR B1 — tasks must feel like solid intermediate practice, NOT like A2.
+- Ban "read one sentence and copy the obvious fact" (e.g. if the text says she plays the piano, do NOT ask only "What activity does she enjoy?" — that is too primitive).
+- Prefer: 2–3 short sentences OR a tiny dialogue/note; then ask for inference, paraphrase in your own words, a reason or consequence, a quick opinion with one clause of support, comparing two ideas, predicting what happens next, or reformulating (e.g. passive, reported speech, conditional) while keeping language B1-appropriate.
+- At least 2 tasks should require the student to produce a phrase or short sentence that is not spelled out verbatim in the prompt.
+- Vocabulary and grammar: present perfect vs past, modals (might/should), linking (although, because, so), reported speech light, comparatives, real conditionals.`;
+  }
+  if (L === "B2") {
+    return `CEFR B2 — nuanced short texts or viewpoints; evaluate tone/intention, summarise, counter-argument, precise vocabulary choice, mixed conditionals, passive reporting, hedging language. Avoid trivial one-line factual recall unless it supports a harder follow-up.`;
+  }
+  if (L === "C1" || L === "C2") {
+    return `CEFR ${L} — sophisticated prompts: abstraction, stance-taking, subtle implication, register, cohesion across a short paragraph, precise reformulation, and idiomatic but natural English.`;
+  }
+  return `Match task depth to CEFR ${level}: stretch the student without going far above the band.`;
+}
+
 function buildGenerateUserMessage(
   level: string,
   exerciseFocus: string,
@@ -124,19 +150,26 @@ function buildGenerateUserMessage(
       ? "\nThis is speaking practice: use prompts the student can answer in 20–40 seconds of speech (opinion, describe, role-play cue). They may answer by voice recording or typing.\n"
       : "";
 
+  const depth = cefrTaskDepthGuidance(level);
+
   return `Create short English practice for one student at CEFR ${level}.
 
 Exercise type / focus: ${exerciseFocus}
 ${speakingNote}${focusNote?.trim() ? `Student note (honour if sensible): ${focusNote.trim()}\n` : ""}
 
+Task depth (follow closely):
+${depth}
+
 Rules:
 - Exactly 4 tasks (not 3, not 5).
 - Each task completable in about 1 minute; keep questions self-contained (no long passages).
 - Difficulty and instructions must match ${level}.
-- Mix task styles where appropriate (short answer, transform a sentence, choose between two options in the question text, fill-in style described in words, etc.).
+- Mix task styles: short answer, grammar transforms, MCQ in text, picture prompts, etc.
+- For 1 or 2 tasks (not more), where it helps, add optional "imageTags": a short comma-separated list of simple English keywords for a stock photo (e.g. "cat,park" or "kitchen,cooking"). The question must tell the student to look at the picture (e.g. describe what you see, name 3 objects, what is happening). Omit "imageTags" on other tasks.
+- English example sentences in tasks must stay inside 'single' or "double" quotes when you give a sentence for the student to read or analyse.
 
 Return ONLY valid JSON (no markdown code fences), shape:
-{"title":"string","introduction":"one short paragraph for the student","tasks":[{"id":"t1","question":"..."},{"id":"t2","question":"..."},{"id":"t3","question":"..."},{"id":"t4","question":"..."}]}`;
+{"title":"string","introduction":"one short paragraph for the student","tasks":[{"id":"t1","question":"...","imageTags":"optional,english,keywords"},{"id":"t2","question":"..."},{"id":"t3","question":"..."},{"id":"t4","question":"..."}]}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -175,7 +208,7 @@ export async function POST(request: NextRequest) {
           {
             role: "system",
             content:
-              "You write concise English learning exercises. Output only valid JSON as requested. No markdown.",
+              "You write concise English learning exercises. Calibrate cognitive demand to the CEFR level: B1 and above must not collapse into single-sentence literal recall. Output only valid JSON as requested. No markdown.",
           },
           {
             role: "user",
@@ -183,7 +216,7 @@ export async function POST(request: NextRequest) {
           },
         ],
         temperature: 0.75,
-        max_tokens: 1400,
+        max_tokens: 1800,
       });
 
       const content = completion.choices[0]?.message?.content?.trim() ?? "";
@@ -353,20 +386,27 @@ Rules:
         return NextResponse.json({ error: "No tasks to translate" }, { status: 400 });
       }
 
-      const userContent = `You translate English learning exercise text into natural Ukrainian for students who find English hard (e.g. CEFR A1–A2).
+      const userContent = `You help Ukrainian-speaking students (CEFR A1–A2) understand exercise INSTRUCTIONS. They still read and answer in English.
 
-Keep the same meaning. Use simple, clear Ukrainian. Do not add new tasks or change task ids.
+PARTIAL translation rules (critical):
+1) titleUk: translate the exercise title into natural Ukrainian (or keep short English titles if they are level labels only).
+2) introductionUk: translate only rubric and instructions. Keep every English example sentence, quoted phrase, and vocabulary the student must read exactly as in the source — same spelling, same ' or " quotes.
+3) For each questionUk: translate ONLY instructional phrases (e.g. "Read this sentence:", "Look at the picture and", "Choose the best option:", "Write your answer.", "What do you see?").
+   - Never translate text inside 'single quotes' or "double quotes" — copy it exactly in place.
+   - Never translate standalone English sentences or clauses that are the language being practised.
+   - Keep English multiple-choice options if they are the answers to choose.
+Example:
+  English question: Read this sentence: 'Anna likes apples and oranges.' What two fruits does Anna like? Write your answer.
+  questionUk: Прочитайте це речення: 'Anna likes apples and oranges.' Які два фрукти любить Анна? Напишіть свою відповідь.
 
 English JSON:
 ${JSON.stringify({ title, introduction, tasks: slim })}
 
 Return ONLY valid JSON (no markdown code fences), shape:
 {
-  "titleUk": "Ukrainian translation of title",
-  "introductionUk": "Ukrainian translation of introduction",
-  "tasks": [
-    { "id": "t1", "questionUk": "Ukrainian translation of that task question" }
-  ]
+  "titleUk": "...",
+  "introductionUk": "...",
+  "tasks": [ { "id": "t1", "questionUk": "..." } ]
 }
 
 Include one tasks[] entry per input task, same "id" values, same order.`;
@@ -377,7 +417,7 @@ Include one tasks[] entry per input task, same "id" values, same order.`;
           {
             role: "system",
             content:
-              "You output only valid JSON as requested. Accurate Ukrainian for language learners.",
+              "You output only valid JSON. Ukrainian must follow partial-translation rules: instructions in Ukrainian, quoted English and practice text unchanged.",
           },
           { role: "user", content: userContent },
         ],
