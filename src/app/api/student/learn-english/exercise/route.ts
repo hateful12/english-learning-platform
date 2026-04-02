@@ -51,7 +51,6 @@ function stripAsteriskBoldForSpeech(s: string): string {
   return s.replace(/\*\*([^*]+)\*\*/g, "$1");
 }
 
-/** One continuous Ukrainian script for OpenAI TTS (student hears tutor feedback in Ukrainian). */
 async function buildUkrainianFeedbackSpeechScript(
   openai: OpenAI,
   structured: StructuredExerciseFeedback

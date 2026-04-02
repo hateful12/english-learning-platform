@@ -171,7 +171,6 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   const [audioByTask, setAudioByTask] = useState<Record<string, AudioMeta | null>>({});
   const [feedbackStructured, setFeedbackStructured] = useState<StructuredExerciseFeedback | null>(null);
   const [feedbackPlain, setFeedbackPlain] = useState<string | null>(null);
-  /** OpenAI TTS: Ukrainian voice summary of structured feedback. */
   const [feedbackAudioUkUrl, setFeedbackAudioUkUrl] = useState<string | null>(null);
   /** Answers copied at submit time so the feedback view cannot show stale text after a new round. */
   const [feedbackAnswersSnapshot, setFeedbackAnswersSnapshot] = useState<Record<string, string> | null>(null);
