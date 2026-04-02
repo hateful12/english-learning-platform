@@ -566,9 +566,9 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
           Short tasks matched to your level. Do them in a few minutes, then get clear feedback. Your teacher can set
           your level; you can adjust it here if you like.
         </p>
-        <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
-          <div>
-            <label htmlFor="learn-level" className="block text-xs font-medium text-ink/60 mb-1">
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-12 md:gap-x-8 gap-y-5">
+          <div className="md:col-span-5 flex flex-col gap-2 min-w-0">
+            <label htmlFor="learn-level" className="text-xs font-medium text-ink/65 leading-tight">
               Level for exercises
             </label>
             <select
@@ -576,7 +576,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
               value={levelInUse}
               onChange={(e) => setManualLevel(e.target.value)}
               disabled={loading}
-              className="input text-sm py-2 min-w-[140px]"
+              className="input text-sm w-full min-h-[2.5rem] py-2"
             >
               {LEVELS.map((lv) => (
                 <option key={lv} value={lv}>
@@ -585,19 +585,19 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
                 </option>
               ))}
             </select>
-            {teacherLabel && (
+            {teacherLabel ? (
               <button
                 type="button"
                 onClick={() => setManualLevel(null)}
                 disabled={loading || manualLevel === null}
-                className="mt-1.5 text-xs text-accent hover:underline disabled:opacity-40 disabled:no-underline"
+                className="self-start text-left text-xs font-medium text-ink/85 hover:text-ink underline-offset-2 hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed pt-0.5 pb-0.5"
               >
                 Use teacher level ({teacherLabel})
               </button>
-            )}
+            ) : null}
           </div>
-          <div className="flex-1 min-w-[200px]">
-            <label htmlFor="learn-focus" className="block text-xs font-medium text-ink/60 mb-1">
+          <div className="md:col-span-7 flex flex-col gap-2 min-w-0">
+            <label htmlFor="learn-focus" className="text-xs font-medium text-ink/65 leading-tight">
               Optional: what do you want to practise?
             </label>
             <input
@@ -607,7 +607,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
               onChange={(e) => setFocusNote(e.target.value.slice(0, 400))}
               disabled={loading || !!active}
               placeholder="e.g. past simple, emails, travel vocabulary"
-              className="input text-sm w-full"
+              className="input text-sm w-full min-h-[2.5rem] py-2"
             />
           </div>
         </div>
