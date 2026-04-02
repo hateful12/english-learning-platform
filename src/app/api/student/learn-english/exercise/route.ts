@@ -324,6 +324,14 @@ Rules:
     }
 
     if (phase === "translateUk") {
+      const levelUk = normalizeLevel(typeof body?.level === "string" ? body.level : null);
+      if (levelUk !== "A1" && levelUk !== "A2") {
+        return NextResponse.json(
+          { error: "Ukrainian instructions are only available for CEFR A1 and A2." },
+          { status: 403 }
+        );
+      }
+
       const title = typeof body?.title === "string" ? body.title.trim().slice(0, 300) : "";
       const introduction =
         typeof body?.introduction === "string" ? body.introduction.trim().slice(0, 4000) : "";

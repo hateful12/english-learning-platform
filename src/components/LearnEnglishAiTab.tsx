@@ -156,6 +156,13 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   const isBeginnerLevel = levelInUse === "A1" || levelInUse === "A2";
 
   useEffect(() => {
+    if (!isBeginnerLevel) {
+      setUkTranslation(null);
+      setShowUkrainian(false);
+    }
+  }, [isBeginnerLevel]);
+
+  useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -348,7 +355,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
   }
 
   async function loadUkrainianTranslation() {
-    if (!active) return;
+    if (!active || !isBeginnerLevel) return;
     setTranslatingUk(true);
     setError("");
     try {
@@ -358,6 +365,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
         credentials: "same-origin",
         body: JSON.stringify({
           phase: "translateUk",
+          level: levelInUse,
           title: active.title,
           introduction: active.introduction,
           tasks: active.tasks,
@@ -567,50 +575,51 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-accent">Your exercise</p>
               <h4 className="mt-1 font-serif text-lg font-semibold text-ink">{active.title}</h4>
-              {showUkrainian && ukTranslation ? (
+              {isBeginnerLevel && showUkrainian && ukTranslation ? (
                 <UkrainianPanel>{ukTranslation.titleUk}</UkrainianPanel>
               ) : null}
               <p className="mt-2 text-sm text-ink/75 whitespace-pre-wrap">{active.introduction}</p>
-              {showUkrainian && ukTranslation ? (
+              {isBeginnerLevel && showUkrainian && ukTranslation ? (
                 <UkrainianPanel>{ukTranslation.introductionUk}</UkrainianPanel>
               ) : null}
 
-              {isBeginnerLevel && !ukTranslation ? (
-                <p className="mt-3 text-sm text-ink/70 rounded-lg border border-sky-200/80 bg-sky-50/50 px-3 py-2">
-                  <span className="font-medium text-ink">Складно читати англійською?</span> Натисніть «Перекласти
-                  опис українською» — зʼявиться допомога українською. Відповіді все одно давайте англійською (або
-                  голосом у Speaking prep).
-                </p>
+              {isBeginnerLevel ? (
+                <>
+                  {!ukTranslation ? (
+                    <p className="mt-3 text-sm text-ink/70 rounded-lg border border-sky-200/80 bg-sky-50/50 px-3 py-2">
+                      <span className="font-medium text-ink">Складно читати англійською?</span> Натисніть «Перекласти
+                      опис українською» — зʼявиться допомога українською. Відповіді все одно давайте англійською (або
+                      голосом у Speaking prep).
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void loadUkrainianTranslation()}
+                      disabled={loading || translatingUk || !!ukTranslation}
+                      className="btn-secondary text-sm"
+                    >
+                      {translatingUk
+                        ? "Перекладаємо…"
+                        : ukTranslation
+                          ? "Переклад готовий"
+                          : "Перекласти опис українською"}
+                    </button>
+                    {ukTranslation ? (
+                      <label className="flex items-center gap-2 text-sm text-ink/80 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          className="rounded border-ink/30"
+                          checked={showUkrainian}
+                          onChange={(e) => setShowUkrainian(e.target.checked)}
+                          disabled={loading}
+                        />
+                        Показати переклад
+                      </label>
+                    ) : null}
+                  </div>
+                </>
               ) : null}
-
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => void loadUkrainianTranslation()}
-                  disabled={loading || translatingUk || !!ukTranslation}
-                  className="btn-secondary text-sm"
-                >
-                  {translatingUk
-                    ? "Перекладаємо…"
-                    : ukTranslation
-                      ? "Переклад готовий"
-                      : "Перекласти опис українською"}
-                </button>
-                {ukTranslation ? (
-                  <label className="flex items-center gap-2 text-sm text-ink/80 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      className="rounded border-ink/30"
-                      checked={showUkrainian}
-                      onChange={(e) => setShowUkrainian(e.target.checked)}
-                      disabled={loading}
-                    />
-                    Показати переклад
-                  </label>
-                ) : !isBeginnerLevel ? (
-                  <span className="text-xs text-ink/45">Опційно для будь-якого рівня</span>
-                ) : null}
-              </div>
             </div>
             <button type="button" onClick={resetAll} disabled={loading} className="btn-secondary text-sm shrink-0">
               Cancel
@@ -624,7 +633,7 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
                     <span className="text-ink/50 font-normal mr-1">{index + 1}.</span>
                     {t.question}
                   </p>
-                  {showUkrainian && ukTranslation?.taskQuestionUk[t.id] ? (
+                  {isBeginnerLevel && showUkrainian && ukTranslation?.taskQuestionUk[t.id] ? (
                     <UkrainianPanel>{ukTranslation.taskQuestionUk[t.id]}</UkrainianPanel>
                   ) : null}
                   <textarea
