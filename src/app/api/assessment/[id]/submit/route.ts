@@ -153,9 +153,11 @@ export async function POST(
       const studentAns = answerMap.get(q.id) ?? null;
       if (qt === "mcq") {
         const ok = studentAns !== null && studentAns !== "" && studentAns === q.correctAnswer;
+        const heard = q.listeningTranscript?.trim();
         return {
           type: "mcq" as const,
           question: q.question,
+          ...(heard ? { listeningTranscript: heard } : {}),
           studentAnswer: studentAns,
           correctAnswer: q.correctAnswer,
           isCorrect: ok,

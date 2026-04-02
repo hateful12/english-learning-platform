@@ -54,6 +54,8 @@ type AssessmentQuestion = {
   question: string;
   options: string[];
   studentAnswer: string | null;
+  listeningTranscript?: string | null;
+  audioUrl?: string | null;
 };
 
 type AssessmentResult = {
@@ -697,6 +699,36 @@ function HistoryList({ history }: { history: AssessmentSummary[] }) {
   );
 }
 
+function ListeningAudioPanel({ q }: { q: AssessmentQuestion }) {
+  return (
+    <div className="rounded-lg border border-accent/25 bg-accent/5 p-4 space-y-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-accent/90">Listening</p>
+      {q.audioUrl ? (
+        <audio className="w-full" controls src={q.audioUrl} key={q.id} preload="metadata">
+          Your browser does not support audio.
+        </audio>
+      ) : (
+        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200/80 rounded-lg px-3 py-2">
+          No audio file for this item. Use the transcript below, or start a new Listening test to regenerate with audio.
+        </p>
+      )}
+      {q.listeningTranscript ? (
+        <details className="text-sm group">
+          <summary className="cursor-pointer text-ink/60 hover:text-ink font-medium list-none flex items-center gap-2 [&::-webkit-details-marker]:hidden">
+            <span className="text-xs border border-ink/15 rounded px-1.5 py-0.5 group-open:hidden">Show</span>
+            <span className="text-xs border border-ink/15 rounded px-1.5 py-0.5 hidden group-open:inline">Hide</span>
+            transcript (optional)
+          </summary>
+          <p className="mt-2 text-ink/75 whitespace-pre-wrap leading-relaxed pl-1 border-l-2 border-ink/10">
+            {q.listeningTranscript}
+          </p>
+        </details>
+      ) : null}
+      <p className="text-xs text-ink/45">Tip: listen as many times as you like before choosing an answer.</p>
+    </div>
+  );
+}
+
 function TestView({
   questions,
   answers,
@@ -756,6 +788,7 @@ function TestView({
             {activeSkill === "speaking" ? "Speaking (type what you would say)" : activeSkill === "writing" ? "Writing" : "Your response"}
           </p>
         )}
+        {qType === "mcq" && activeSkill === "listening" && <ListeningAudioPanel q={q} />}
         <p className="text-base font-medium text-ink leading-relaxed whitespace-pre-wrap">{q.question}</p>
         {qType === "mcq" ? (
           <div className="space-y-2.5">
@@ -1239,9 +1272,11 @@ I'd like to work skill by skill. For each session, give me a short warm-up, a fo
                   <h3 className="font-semibold text-ink">{SKILL_LABELS[skill]}</h3>
                   <p className="text-sm text-ink/60 mt-1 leading-relaxed">{SKILL_BLURBS[skill]}</p>
                   <p className="text-xs text-ink/45 mt-2">
-                    {skill === "reading" || skill === "listening"
-                      ? "10 multiple-choice questions"
-                      : "3 short open tasks — type your answer in full"}
+                    {skill === "reading"
+                      ? "10 MCQs — two substantial passages (no one-sentence tricks)"
+                      : skill === "listening"
+                        ? "10 MCQs — play generated audio for each clip, then answer"
+                        : "3 short open tasks — type your answer in full"}
                   </p>
                 </div>
               </div>

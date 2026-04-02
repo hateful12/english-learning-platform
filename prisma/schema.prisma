@@ -195,13 +195,15 @@ model Assessment {
 }
 
 model AssessmentQuestion {
-  id            String     @id @default(cuid())
-  assessmentId  String
-  assessment    Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  order         Int
-  questionType  String     @default("mcq") // "mcq" | "open"
-  question      String
-  options       String     // JSON array of 4 answer options (empty for open)
-  correctAnswer String     // for mcq: exact option text; for open: often empty
-  studentAnswer String?
+  id                  String     @id @default(cuid())
+  assessmentId        String
+  assessment          Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  order               Int
+  questionType        String     @default("mcq") // "mcq" | "open"
+  question            String
+  options             String     // JSON array of 4 answer options (empty for open)
+  correctAnswer       String     // for mcq: exact option text; for open: often empty
+  studentAnswer       String?
+  listeningTranscript String? // listening: script for TTS; optional reveal in UI
+  audioUrl            String? // listening: /assessment-audio/{id}.mp3
 }

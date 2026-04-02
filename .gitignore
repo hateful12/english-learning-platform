@@ -20,6 +20,9 @@
 # uploads (homework attachments)
 /public/uploads
 
+# generated listening test audio (OpenAI TTS)
+/public/assessment-audio/*.mp3
+
 # misc
 .DS_Store
 *.pem
