@@ -6,6 +6,7 @@ import { ScheduleViewer } from "./ScheduleViewer";
 import { WordleTab } from "./WordleTab";
 import { EmojiPicker } from "./EmojiPicker";
 import { LinkifiedText } from "./LinkifiedText";
+import { VoiceRecorder } from "./VoiceRecorder";
 type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
 type HomeworkResponse = {
   id: string;
@@ -175,6 +176,17 @@ function HomeworkSubmit({
     }
   }
 
+  async function handleVoiceRecorded(blob: Blob, filename: string) {
+    setUploading(true);
+    try {
+      const file = new File([blob], filename, { type: blob.type });
+      const data = await uploadFile(file).catch((e) => { alert(e.message); return null; });
+      if (data) setAttachments((prev) => [...prev, { url: data.url, name: data.name, type: data.type }]);
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function handleTurnIn() {
     const ok = await onSubmit(homeworkId, response, attachments);
     if (ok) setEditingOpen(false);
@@ -219,7 +231,7 @@ function HomeworkSubmit({
       <div className="mb-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-ink/45">Hand in your work</p>
         <p className="mt-0.5 text-sm text-ink/65">
-          Write your answer below and attach any photos, PDFs, or audio your teacher requested.
+          Write your answer below. You can attach files or record a voice message, same as your teacher.
         </p>
       </div>
       <label className="block text-sm font-semibold text-ink mb-1">Written answer</label>
@@ -241,6 +253,11 @@ function HomeworkSubmit({
           className="hidden"
           onChange={(e) => handleFileChange(e.target.files)}
         />
+        <VoiceRecorder
+          onRecorded={handleVoiceRecorded}
+          disabled={uploading || submitting}
+          className="rounded-lg border-2 border-ink/20 bg-white/60 px-3.5 py-2 shadow-sm hover:border-accent/40 hover:bg-accent/5"
+        />
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -254,7 +271,7 @@ function HomeworkSubmit({
             </>
           )}
         </button>
-        <span className="text-xs text-ink/45">Images, PDF, Office docs, zip, audio</span>
+        <span className="text-xs text-ink/45">Voice, images, PDF, Office docs, zip, audio</span>
         <EmojiPicker onInsert={(e) => setResponse((prev) => prev + e)} />
         {attachments.length > 0 && (
           <ul className="flex flex-wrap gap-2 basis-full">

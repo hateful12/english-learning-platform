@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Group } from "./GroupEditor";
 import { EmojiPicker } from "./EmojiPicker";
 import { LinkifiedText } from "./LinkifiedText";
+import { VoiceRecorder } from "./VoiceRecorder";
 
 type Student = { id: string; email: string; name: string | null };
 export type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
@@ -38,83 +39,6 @@ function parseAttachmentList(raw: string | undefined): HomeworkAttachment[] {
   } catch {
     return [];
   }
-}
-
-// ---------- Voice Recorder ----------
-function VoiceRecorder({
-  onRecorded,
-}: {
-  onRecorded: (blob: Blob, filename: string) => void;
-}) {
-  const [recording, setRecording] = useState(false);
-  const [seconds, setSeconds] = useState(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  function startTimer() {
-    setSeconds(0);
-    timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
-  }
-
-  function stopTimer() {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  }
-
-  async function startRecording() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
-      const mr = new MediaRecorder(stream, { mimeType });
-      chunksRef.current = [];
-      mr.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      mr.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const ext = mimeType.includes("ogg") ? "ogg" : "webm";
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        onRecorded(blob, `voice-message.${ext}`);
-        stopTimer();
-      };
-      mr.start();
-      mediaRecorderRef.current = mr;
-      setRecording(true);
-      startTimer();
-    } catch {
-      alert("Microphone access denied or not available.");
-    }
-  }
-
-  function stopRecording() {
-    mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current = null;
-    setRecording(false);
-  }
-
-  useEffect(() => () => stopTimer(), []);
-
-  const label = recording
-    ? `Stop recording (${seconds}s)`
-    : "Record voice message";
-
-  return (
-    <button
-      type="button"
-      onClick={recording ? stopRecording : startRecording}
-      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-        recording
-          ? "bg-red-100 text-red-700 hover:bg-red-200"
-          : "bg-ink/5 text-ink/80 hover:bg-ink/10"
-      }`}
-    >
-      <span className={`inline-block h-2 w-2 rounded-full ${recording ? "animate-pulse bg-red-500" : "bg-ink/40"}`} />
-      {label}
-    </button>
-  );
 }
 
 // ---------- Feedback Form ----------
