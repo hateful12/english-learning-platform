@@ -1,21 +1,46 @@
 #!/usr/bin/env node
 /**
  * Deploy latest code to VPS: backup prisma/prisma/dev.db, git sync, restore DB, prisma push, build, pm2 restart.
- * Run: set DEPLOY_SSH_HOST=... DEPLOY_SSH_PASSWORD=... && node scripts/deploy-update.js
+ * Credentials: DEPLOY_SSH_* or same keys in .env.local. Default host: 194.61.52.14.
  *
- * Requires: ssh2 (already in package.json). Optional: DEPLOY_BRANCH, DEPLOY_APP_DIR, DEPLOY_CLEAR_DB=1.
+ * Optional: DEPLOY_BRANCH, DEPLOY_APP_DIR, DEPLOY_CLEAR_DB=1.
  */
+const fs = require("fs");
+const path = require("path");
 const { Client } = require("ssh2");
 
-const HOST = process.env.DEPLOY_SSH_HOST || "";
+function mergeEnvLocal() {
+  const p = path.join(process.cwd(), ".env.local");
+  if (!fs.existsSync(p)) return;
+  const text = fs.readFileSync(p, "utf8");
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let val = trimmed.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = val;
+  }
+}
+
+mergeEnvLocal();
+
+const HOST = process.env.DEPLOY_SSH_HOST || "194.61.52.14";
 const USER = process.env.DEPLOY_SSH_USER || "root";
 const PASSWORD = process.env.DEPLOY_SSH_PASSWORD || "";
-if (!HOST || !PASSWORD) {
-  console.error("Set DEPLOY_SSH_HOST and DEPLOY_SSH_PASSWORD (see script header).");
+if (!PASSWORD) {
+  console.error("Set DEPLOY_SSH_PASSWORD (environment or .env.local).");
   process.exit(1);
 }
 const BRANCH = process.env.DEPLOY_BRANCH || "feat/learn-english-ai-tab";
-const APP_DIR = "/var/www/english-app";
+const APP_DIR = process.env.DEPLOY_APP_DIR || "/var/www/english-app";
 
 function run(conn, cmd, label) {
   return new Promise((resolve, reject) => {
