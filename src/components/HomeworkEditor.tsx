@@ -306,6 +306,29 @@ export function HomeworkEditor({
     }
   }
 
+  async function handleVoiceForHomework(
+    blob: Blob,
+    filename: string,
+    setTarget: React.Dispatch<React.SetStateAction<HomeworkAttachment[]>>,
+  ) {
+    setUploading(true);
+    try {
+      const file = new File([blob], filename, { type: blob.type });
+      const formData = new FormData();
+      formData.set("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Upload failed");
+        return;
+      }
+      const data = await res.json();
+      setTarget((prev) => [...prev, { url: data.url, name: data.name, type: data.type }]);
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
@@ -467,22 +490,28 @@ export function HomeworkEditor({
             <EmojiPicker onInsert={(e) => setDescription((prev) => prev + e)} />
           </div>
           <div className="space-y-1">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,audio/*,.zip,.rar,.7z,.gz"
-              multiple
-              className="hidden"
-              onChange={(e) => handleUpload(e.target.files, setAttachments)}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="text-sm text-accent hover:underline disabled:opacity-50"
-            >
-              {uploading ? "Uploading…" : "+ Add photo, audio or archive"}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <VoiceRecorder
+                onRecorded={(b, f) => void handleVoiceForHomework(b, f, setAttachments)}
+                disabled={uploading}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,audio/*,.zip,.rar,.7z,.gz"
+                multiple
+                className="hidden"
+                onChange={(e) => handleUpload(e.target.files, setAttachments)}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="text-sm text-accent hover:underline disabled:opacity-50"
+              >
+                {uploading ? "Uploading…" : "+ Add photo, audio or archive"}
+              </button>
+            </div>
             {attachments.length > 0 && (
               <ul className="flex flex-wrap gap-2 mt-1">
                 {attachments.map((a, i) => (
@@ -525,22 +554,28 @@ export function HomeworkEditor({
                   <EmojiPicker onInsert={(e) => setEditing((prev) => prev ? { ...prev, description: (prev.description ?? "") + e } : null)} />
                 </div>
                 <div className="space-y-1">
-                  <input
-                    ref={editFileInputRef}
-                    type="file"
-                    accept="image/*,audio/*,.zip,.rar,.7z,.gz"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => handleUpload(e.target.files, setEditingAttachments)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => editFileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="text-sm text-accent hover:underline disabled:opacity-50"
-                  >
-                    {uploading ? "Uploading…" : "+ Add photo, audio or archive"}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <VoiceRecorder
+                      onRecorded={(b, f) => void handleVoiceForHomework(b, f, setEditingAttachments)}
+                      disabled={uploading}
+                    />
+                    <input
+                      ref={editFileInputRef}
+                      type="file"
+                      accept="image/*,audio/*,.zip,.rar,.7z,.gz"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => handleUpload(e.target.files, setEditingAttachments)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => editFileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="text-sm text-accent hover:underline disabled:opacity-50"
+                    >
+                      {uploading ? "Uploading…" : "+ Add photo, audio or archive"}
+                    </button>
+                  </div>
                   {editingAttachments.length > 0 && (
                     <ul className="flex flex-wrap gap-2 mt-1">
                       {editingAttachments.map((a, i) => (
