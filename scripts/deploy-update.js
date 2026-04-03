@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 /**
- * Deploy latest code to VPS: git pull, clear DB (keep admin), build, restart.
- * Run: node scripts/deploy-update.js
+ * Deploy latest code to VPS: backup prisma/prisma/dev.db, git sync, restore DB, prisma push, build, pm2 restart.
+ * Run: set DEPLOY_SSH_HOST=... DEPLOY_SSH_PASSWORD=... && node scripts/deploy-update.js
  *
- * Requires: npm install ssh2 (run once)
+ * Requires: ssh2 (already in package.json). Optional: DEPLOY_BRANCH, DEPLOY_APP_DIR, DEPLOY_CLEAR_DB=1.
  */
 const { Client } = require("ssh2");
 
-const HOST = "194.61.52.14";
-const USER = "root";
-const PASSWORD = "zCpHfwfemQd4X03";
+const HOST = process.env.DEPLOY_SSH_HOST || "";
+const USER = process.env.DEPLOY_SSH_USER || "root";
+const PASSWORD = process.env.DEPLOY_SSH_PASSWORD || "";
+if (!HOST || !PASSWORD) {
+  console.error("Set DEPLOY_SSH_HOST and DEPLOY_SSH_PASSWORD (see script header).");
+  process.exit(1);
+}
 const BRANCH = process.env.DEPLOY_BRANCH || "feat/learn-english-ai-tab";
 const APP_DIR = "/var/www/english-app";
 
@@ -72,7 +76,7 @@ git fetch origin && git checkout ${BRANCH} && git reset --hard origin/${BRANCH}
 if [ -f "$KEEP" ]; then
   mkdir -p prisma/prisma
   cp "$KEEP" prisma/prisma/dev.db
-  echo "Restored DB from $KEEP (survives git reset; do not commit SQLite)."
+  echo "Restored DB from $KEEP (production data survives git sync; repo carries a baseline commit for VRS)."
 else
   echo "No backup to restore — create prisma/prisma/dev.db or upload with scripts/upload-db-to-vps.js"
 fi`,
