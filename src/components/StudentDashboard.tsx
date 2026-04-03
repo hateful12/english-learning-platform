@@ -804,6 +804,16 @@ function PaymentsTab({
         </div>
       )}
 
+      {/* Payment instructions */}
+      {studentInfo?.paymentCode && publicSettings?.monobankCard && (
+        <div className="rounded-xl border border-ink/10 bg-ink/[0.03] p-4 text-sm leading-relaxed">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink/45 mb-2">Інструкція</p>
+          <p lang="uk" className="text-ink/90">
+            Перекажіть оплату на картку — її номер вказано в блоці нижче. У коментарі до переказу (поле «Призначення» або «Коментар» у застосунку банку) впишіть лише ваш персональний чотирисимвольний код із рожевого блоку на цій сторінці. Інших даних чи пояснень додавати не потрібно.
+          </p>
+        </div>
+      )}
+
       {/* Payment code */}
       {studentInfo?.paymentCode && (
         <div className="rounded-xl border border-accent/20 bg-accent/5 px-4 py-3 flex items-center justify-between gap-4">
