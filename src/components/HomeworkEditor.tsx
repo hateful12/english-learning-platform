@@ -270,6 +270,8 @@ export function HomeworkEditor({
   const [editingAttachments, setEditingAttachments] = useState<HomeworkAttachment[]>([]);
   const [editingAssignment, setEditingAssignment] = useState<string>("");
   const [uploading, setUploading] = useState(false);
+  const [addingHomework, setAddingHomework] = useState(false);
+  const [updatingHomework, setUpdatingHomework] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveGroup, setArchiveGroup] = useState<string>("");
   const [archiveMonth, setArchiveMonth] = useState<string>("");
@@ -331,24 +333,34 @@ export function HomeworkEditor({
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || addingHomework) return;
     const { studentId, groupId } = decodeAssignment(assignment);
-    await fetch("/api/homework", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: title.trim(),
-        description: description.trim(),
-        studentId,
-        groupId,
-        attachments,
-      }),
-    });
-    setTitle("");
-    setDescription("");
-    setAssignment("");
-    setAttachments([]);
-    onAdd();
+    setAddingHomework(true);
+    try {
+      const res = await fetch("/api/homework", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim(),
+          studentId,
+          groupId,
+          attachments,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert((err as { error?: string }).error || "Failed to add homework");
+        return;
+      }
+      setTitle("");
+      setDescription("");
+      setAssignment("");
+      setAttachments([]);
+      onAdd();
+    } finally {
+      setAddingHomework(false);
+    }
   }
 
   async function handleDelete(id: string) {
@@ -397,23 +409,33 @@ export function HomeworkEditor({
 
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
-    if (!editing) return;
+    if (!editing || updatingHomework) return;
     const { studentId, groupId } = decodeAssignment(editingAssignment);
-    await fetch(`/api/homework/${editing.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: editing.title,
-        description: editing.description,
-        studentId,
-        groupId,
-        attachments: editingAttachments,
-      }),
-    });
-    setEditing(null);
-    setEditingAttachments([]);
-    setEditingAssignment("");
-    onUpdate();
+    setUpdatingHomework(true);
+    try {
+      const res = await fetch(`/api/homework/${editing.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editing.title,
+          description: editing.description,
+          studentId,
+          groupId,
+          attachments: editingAttachments,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert((err as { error?: string }).error || "Failed to save homework");
+        return;
+      }
+      setEditing(null);
+      setEditingAttachments([]);
+      setEditingAssignment("");
+      onUpdate();
+    } finally {
+      setUpdatingHomework(false);
+    }
   }
 
   function assignmentLabel(item: Item) {
@@ -524,8 +546,12 @@ export function HomeworkEditor({
             )}
           </div>
         </div>
-        <button type="submit" className="btn-primary shrink-0">
-          Add homework
+        <button
+          type="submit"
+          disabled={addingHomework || uploading}
+          className="btn-primary shrink-0 disabled:opacity-50"
+        >
+          {addingHomework ? "Saving…" : "Add homework"}
         </button>
       </form>
 
@@ -589,8 +615,21 @@ export function HomeworkEditor({
                 </div>
                 <AssignmentSelect value={editingAssignment} onChange={setEditingAssignment} />
                 <div className="flex gap-2">
-                  <button type="submit" className="btn-primary">Save</button>
-                  <button type="button" onClick={() => { setEditing(null); setEditingAttachments([]); setEditingAssignment(""); }} className="btn-secondary">Cancel</button>
+                  <button
+                    type="submit"
+                    disabled={updatingHomework || uploading}
+                    className="btn-primary disabled:opacity-50"
+                  >
+                    {updatingHomework ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={updatingHomework}
+                    onClick={() => { setEditing(null); setEditingAttachments([]); setEditingAssignment(""); }}
+                    className="btn-secondary disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </form>
             ) : (
