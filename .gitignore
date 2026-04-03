@@ -50,3 +50,6 @@ prisma/prisma/*.db-journal
 .vscode
 *.swp
 *.swo
+
+# typescript incremental
+*.tsbuildinfo
