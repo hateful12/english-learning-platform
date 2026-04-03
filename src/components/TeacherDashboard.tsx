@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { HomeworkEditor } from "./HomeworkEditor";
 import { InviteSection } from "./InviteSection";
 import { GroupEditor, Group } from "./GroupEditor";
@@ -34,6 +34,20 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "groups", label: "Groups", icon: "👥" },
   { id: "settings", label: "Settings", icon: "⚙️" },
 ];
+
+const TEACHER_TAB_STORAGE_KEY = "english-teacher-dashboard-tab";
+
+function isTeacherDashboardTab(s: string | null): s is Tab {
+  return s !== null && TABS.some((t) => t.id === s);
+}
+
+function persistTeacherTab(tab: Tab) {
+  try {
+    localStorage.setItem(TEACHER_TAB_STORAGE_KEY, tab);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 type Transaction = {
   id: string;
@@ -106,6 +120,15 @@ export function TeacherDashboard() {
     load();
     loadTransactions();
     loadSettings();
+  }, []);
+
+  useLayoutEffect(() => {
+    try {
+      const stored = localStorage.getItem(TEACHER_TAB_STORAGE_KEY);
+      if (isTeacherDashboardTab(stored)) setActiveTab(stored);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   async function togglePaid(lessonId: string, currentlyPaid: boolean) {
@@ -199,7 +222,10 @@ export function TeacherDashboard() {
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  persistTeacherTab(tab.id);
+                }}
                 className={`relative flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium whitespace-nowrap transition-all duration-150 ${
                   isActive
                     ? "bg-white text-ink shadow-sm border border-ink/10"

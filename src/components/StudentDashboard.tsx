@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ScheduleViewer } from "./ScheduleViewer";
 import { WordleTab } from "./WordleTab";
@@ -311,9 +311,18 @@ type StudentInfo = { id: string; email: string; name: string | null; paymentCode
 type PublicSettings = { lessonPrice: number | null; monobankCard: string | null } | null;
 
 const TAB_IDS: Tab[] = ["schedule", "homework", "payments", "learn-ai", "games"];
+const STUDENT_TAB_STORAGE_KEY = "english-student-dashboard-tab";
 
 function isTab(s: string | null): s is Tab {
   return s !== null && TAB_IDS.includes(s as Tab);
+}
+
+function persistStudentTab(tab: Tab) {
+  try {
+    localStorage.setItem(STUDENT_TAB_STORAGE_KEY, tab);
+  } catch {
+    /* ignore quota / private mode */
+  }
 }
 
 export function StudentDashboard() {
@@ -368,15 +377,24 @@ export function StudentDashboard() {
     });
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const hw = searchParams.get("hw");
     const tab = searchParams.get("tab");
     if (hw) {
       setActiveTab("homework");
+      persistStudentTab("homework");
       return;
     }
     if (isTab(tab)) {
       setActiveTab(tab);
+      persistStudentTab(tab);
+      return;
+    }
+    try {
+      const stored = localStorage.getItem(STUDENT_TAB_STORAGE_KEY);
+      if (isTab(stored)) setActiveTab(stored);
+    } catch {
+      /* ignore */
     }
   }, [searchParams]);
 
@@ -436,7 +454,10 @@ export function StudentDashboard() {
           <button
             key={tab.id}
             type="button"
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              setActiveTab(tab.id);
+              persistStudentTab(tab.id);
+            }}
             className={[
               "flex flex-1 items-center justify-center gap-2 px-4 py-4 text-sm font-medium transition-all",
               activeTab === tab.id
