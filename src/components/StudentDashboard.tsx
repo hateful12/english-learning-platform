@@ -298,10 +298,10 @@ function HomeworkSubmit({
         className="mt-4 btn-primary font-semibold"
       >
         {submitting
-          ? "Turning in…"
+          ? "Sending…"
           : hasSavedWork
             ? "Update your submission"
-            : "Turn in assignment"}
+            : "Send for the teacher"}
       </button>
     </div>
   );
