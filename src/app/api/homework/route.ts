@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { isTeacherLoggedIn, getStudentId } from "@/lib/auth";
 import { notifyStudentsNewHomework, scheduleRemindersForNewHomework } from "@/lib/homework-reminders";
 import { normalizeAttachmentPayloadList, normalizeAttachmentsJsonField } from "@/lib/attachment-url";
+import { studentSeesHomeworkRow } from "@/lib/homework-visibility";
 
 export const runtime = "nodejs";
 
@@ -12,32 +13,44 @@ export async function GET() {
     const studentId = teacher ? null : await getStudentId();
 
     let matchingIds: string[] | null = null; // null = fetch all (teacher)
+    /** Raw Homework targeting from DB — used to re-check visibility after Prisma (defense in depth). */
+    let homeworkTargetsById = new Map<
+      string,
+      { rowStudentId: string | null | undefined; rowGroupId: string | null | undefined }
+    >();
+    let viewerGroupIds: string[] = [];
 
     if (!teacher) {
       if (studentId) {
-        // Find all groups the student belongs to via raw SQL
         const groupRows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
           SELECT groupId AS groupId FROM "StudentGroup" WHERE studentId = ${studentId}
         `;
-        const groupIds = groupRows.map((r) => (r.groupId ?? r.groupid) as string).filter(Boolean);
+        viewerGroupIds = groupRows.map((r) => (r.groupId ?? r.groupid) as string).filter(Boolean);
 
-        // Build matching homework IDs: all-students OR individual OR group
-        let rows: Array<{ id: string }>;
-        // Group-targeted rows must have studentId NULL; otherwise a "个体" task leaked a groupId
-        // and every group member would still match the OR groupId IN (...) branch.
-        if (groupIds.length > 0) {
-          const placeholders = groupIds.map(() => "?").join(", ");
-          rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
-            `SELECT id FROM "Homework" WHERE (studentId IS NULL AND groupId IS NULL) OR studentId = ? OR (studentId IS NULL AND groupId IN (${placeholders}))`,
-            studentId,
-            ...groupIds
-          );
-        } else {
-          rows = await prisma.$queryRaw<Array<{ id: string }>>`
-            SELECT id FROM "Homework" WHERE (studentId IS NULL AND groupId IS NULL) OR studentId = ${studentId}
-          `;
+        const targetRows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+          SELECT id, studentId, groupId FROM "Homework"
+        `;
+        for (const raw of targetRows) {
+          const id = raw.id ?? raw.Id;
+          if (id == null || String(id).trim() === "") continue;
+          const rowSid = (raw.studentId ?? raw.studentid) as string | null | undefined;
+          const rowGid = (raw.groupId ?? raw.groupid) as string | null | undefined;
+          homeworkTargetsById.set(String(id), { rowStudentId: rowSid, rowGroupId: rowGid });
         }
-        matchingIds = rows.map((r) => r.id);
+        matchingIds = targetRows
+          .filter((raw) => {
+            const id = raw.id ?? raw.Id;
+            if (id == null || String(id).trim() === "") return false;
+            const rowSid = (raw.studentId ?? raw.studentid) as string | null | undefined;
+            const rowGid = (raw.groupId ?? raw.groupid) as string | null | undefined;
+            return studentSeesHomeworkRow({
+              rowStudentId: rowSid,
+              rowGroupId: rowGid,
+              viewerStudentId: studentId,
+              viewerGroupIds,
+            });
+          })
+          .map((raw) => String(raw.id ?? raw.Id));
       } else {
         // Unauthenticated: only truly public homework (no student, no group)
         const rows = await prisma.$queryRaw<Array<{ id: string }>>`
@@ -137,9 +150,22 @@ export async function GET() {
       }>;
     };
 
-    const visibleItems = teacher
+    let visibleItems: Row[] = teacher
       ? (items as Row[])
       : (items as Row[]).filter((item) => !studentHiddenSet.has(item.id));
+
+    if (!teacher && studentId && homeworkTargetsById.size > 0) {
+      visibleItems = visibleItems.filter((item) => {
+        const meta = homeworkTargetsById.get(item.id);
+        if (!meta) return false;
+        return studentSeesHomeworkRow({
+          rowStudentId: meta.rowStudentId,
+          rowGroupId: meta.rowGroupId,
+          viewerStudentId: studentId,
+          viewerGroupIds,
+        });
+      });
+    }
 
     const serialized = visibleItems.map((item) => {
       const { responses, ...rest } = item;
