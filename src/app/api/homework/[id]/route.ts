@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { isTeacherLoggedIn } from "@/lib/auth";
+import { normalizeAttachmentPayloadList } from "@/lib/attachment-url";
 
 export async function PATCH(
   _request: NextRequest,
@@ -15,7 +16,9 @@ export async function PATCH(
   const attachmentsJson =
     body.attachments !== undefined
       ? Array.isArray(body.attachments) && body.attachments.every((a: unknown) => a && typeof (a as { url?: string }).url === "string")
-        ? JSON.stringify(body.attachments)
+        ? JSON.stringify(
+            normalizeAttachmentPayloadList(body.attachments as Array<{ url: string; name: string; type?: string }>)
+          )
         : "[]"
       : undefined;
   const item = await prisma.homework.update({

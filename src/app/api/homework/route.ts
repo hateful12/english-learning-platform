@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { isTeacherLoggedIn, getStudentId } from "@/lib/auth";
 import { notifyStudentsNewHomework, scheduleRemindersForNewHomework } from "@/lib/homework-reminders";
+import { normalizeAttachmentPayloadList, normalizeAttachmentsJsonField } from "@/lib/attachment-url";
 
 export const runtime = "nodejs";
 
@@ -150,6 +151,7 @@ export async function GET() {
         null;
       return {
         ...rest,
+        attachments: normalizeAttachmentsJsonField((rest as { attachments?: string }).attachments),
         groupId,
         group: groupId && gInfo?.groupName ? { id: groupId, name: gInfo.groupName } : null,
         // Teacher sees which students have this closed individually
@@ -161,10 +163,14 @@ export async function GET() {
             ? responses.map((r) => ({
                 id: r.id,
                 response: r.response,
-                studentResponseAttachments: (r as { studentResponseAttachments?: string }).studentResponseAttachments ?? "[]",
+                studentResponseAttachments: normalizeAttachmentsJsonField(
+                  (r as { studentResponseAttachments?: string }).studentResponseAttachments ?? "[]"
+                ),
                 submittedAt: r.submittedAt,
                 teacherFeedback: r.teacherFeedback ?? null,
-                teacherFeedbackAttachments: r.teacherFeedbackAttachments ?? "[]",
+                teacherFeedbackAttachments: normalizeAttachmentsJsonField(
+                  r.teacherFeedbackAttachments ?? "[]"
+                ),
                 feedbackAt: r.feedbackAt ?? null,
                 ...(r.student ? { student: r.student } : {}),
               }))
@@ -201,7 +207,9 @@ export async function POST(request: NextRequest) {
     }
     const attachmentsJson =
       Array.isArray(attachments) && attachments.every((a: unknown) => a && typeof (a as { url?: string }).url === "string")
-        ? JSON.stringify(attachments)
+        ? JSON.stringify(
+            normalizeAttachmentPayloadList(attachments as Array<{ url: string; name: string; type?: string }>)
+          )
         : "[]";
 
     // Auto-close previous active homework only for students who have received teacher feedback

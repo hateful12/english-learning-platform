@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getStudentId } from "@/lib/auth";
+import { normalizeAttachmentPayloadList } from "@/lib/attachment-url";
 
 /** Student submits or updates their response for a homework assignment. */
 export async function POST(
@@ -27,7 +28,9 @@ export async function POST(
   const attachmentsRaw = (body as { attachments?: unknown })?.attachments;
   const attachmentsJson =
     Array.isArray(attachmentsRaw) && attachmentsRaw.every((a: unknown) => a && typeof (a as { url?: string }).url === "string")
-      ? JSON.stringify(attachmentsRaw)
+      ? JSON.stringify(
+          normalizeAttachmentPayloadList(attachmentsRaw as Array<{ url: string; name: string; type?: string }>)
+        )
       : "[]";
 
   const homework = await prisma.homework.findUnique({
