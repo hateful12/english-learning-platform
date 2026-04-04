@@ -90,7 +90,7 @@ export function TeacherDashboard() {
     Promise.all([
       fetch("/api/students").then((r) => r.json()),
       fetch("/api/groups").then((r) => r.json()),
-      fetch("/api/homework").then((r) => r.json()),
+      fetch("/api/homework?view=teacher").then((r) => r.json()),
     ]).then(([st, gr, hw]) => {
       setStudents(Array.isArray(st) ? st : []);
       setGroups(Array.isArray(gr) ? gr : []);

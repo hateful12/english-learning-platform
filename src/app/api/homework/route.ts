@@ -7,10 +7,25 @@ import { studentSeesHomeworkRow } from "@/lib/homework-visibility";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const teacher = await isTeacherLoggedIn();
-    const studentId = teacher ? null : await getStudentId();
+    // Teacher dashboard must pass ?view=teacher. If both teacher + student cookies exist (same browser),
+    // prefer student scope unless view=teacher — otherwise students would receive the full teacher list.
+    const viewTeacher = request.nextUrl.searchParams.get("view") === "teacher";
+    const teacherLoggedIn = await isTeacherLoggedIn();
+    const studentId = await getStudentId();
+
+    let teacher = false;
+    if (viewTeacher) {
+      if (!teacherLoggedIn) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      teacher = true;
+    } else if (studentId) {
+      teacher = false;
+    } else if (teacherLoggedIn) {
+      teacher = true;
+    }
 
     let matchingIds: string[] | null = null; // null = fetch all (teacher)
     /** Raw Homework targeting from DB — used to re-check visibility after Prisma (defense in depth). */
@@ -27,30 +42,25 @@ export async function GET() {
         `;
         viewerGroupIds = groupRows.map((r) => (r.groupId ?? r.groupid) as string).filter(Boolean);
 
-        const targetRows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-          SELECT id, studentId, groupId FROM "Homework"
-        `;
-        for (const raw of targetRows) {
-          const id = raw.id ?? raw.Id;
-          if (id == null || String(id).trim() === "") continue;
-          const rowSid = (raw.studentId ?? raw.studentid) as string | null | undefined;
-          const rowGid = (raw.groupId ?? raw.groupid) as string | null | undefined;
-          homeworkTargetsById.set(String(id), { rowStudentId: rowSid, rowGroupId: rowGid });
+        const targetRows = await prisma.homework.findMany({
+          select: { id: true, studentId: true, groupId: true },
+        });
+        for (const row of targetRows) {
+          homeworkTargetsById.set(row.id, {
+            rowStudentId: row.studentId,
+            rowGroupId: row.groupId,
+          });
         }
         matchingIds = targetRows
-          .filter((raw) => {
-            const id = raw.id ?? raw.Id;
-            if (id == null || String(id).trim() === "") return false;
-            const rowSid = (raw.studentId ?? raw.studentid) as string | null | undefined;
-            const rowGid = (raw.groupId ?? raw.groupid) as string | null | undefined;
-            return studentSeesHomeworkRow({
-              rowStudentId: rowSid,
-              rowGroupId: rowGid,
+          .filter((row) =>
+            studentSeesHomeworkRow({
+              rowStudentId: row.studentId,
+              rowGroupId: row.groupId,
               viewerStudentId: studentId,
               viewerGroupIds,
-            });
-          })
-          .map((raw) => String(raw.id ?? raw.Id));
+            })
+          )
+          .map((r) => r.id);
       } else {
         // Unauthenticated: only truly public homework (no student, no group)
         const rows = await prisma.$queryRaw<Array<{ id: string }>>`
