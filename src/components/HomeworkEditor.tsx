@@ -5,6 +5,7 @@ import { Group } from "./GroupEditor";
 import { EmojiPicker } from "./EmojiPicker";
 import { LinkifiedText } from "./LinkifiedText";
 import { VoiceRecorder } from "./VoiceRecorder";
+import { imageFilesFromClipboard } from "@/lib/clipboard-images";
 
 type Student = { id: string; email: string; name: string | null };
 export type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
@@ -137,7 +138,28 @@ function FeedbackForm({
           {hasFeedback ? "Edit feedback" : "+ Add feedback"}
         </button>
       ) : (
-        <div className="mt-1 rounded-md border border-accent/20 bg-accent/5 p-3 space-y-2">
+        <div
+          className="mt-1 rounded-md border border-accent/20 bg-accent/5 p-3 space-y-2"
+          onPaste={(e) => {
+            const files = imageFilesFromClipboard(e.nativeEvent);
+            if (!files.length) return;
+            e.preventDefault();
+            void (async () => {
+              setUploading(true);
+              try {
+                for (const file of files) {
+                  const data = await uploadFile(file).catch((err: unknown) => {
+                    alert(err instanceof Error ? err.message : "Upload failed");
+                    return null;
+                  });
+                  if (data) setAttachments((prev) => [...prev, { url: data.url, name: data.name, type: data.type }]);
+                }
+              } finally {
+                setUploading(false);
+              }
+            })();
+          }}
+        >
           <p className="text-xs font-semibold text-accent/80 uppercase tracking-wide">Teacher feedback</p>
           <textarea
             value={feedback}
@@ -153,7 +175,7 @@ function FeedbackForm({
             <input
               ref={fileInputRef}
               type="file"
-              accept="audio/*"
+              accept="audio/*,image/*"
               multiple
               className="hidden"
               onChange={(e) => handleFileChange(e.target.files)}
@@ -164,8 +186,9 @@ function FeedbackForm({
               disabled={uploading}
               className="flex items-center gap-1.5 rounded-md bg-ink/5 px-3 py-1.5 text-sm text-ink/80 hover:bg-ink/10 disabled:opacity-50"
             >
-              {uploading ? "Uploading…" : "Upload audio file"}
+              {uploading ? "Uploading…" : "Upload audio or image"}
             </button>
+            <span className="text-xs text-ink/45">Ctrl+V to paste screenshot</span>
           </div>
 
           {attachments.length > 0 && (
@@ -222,6 +245,13 @@ function decodeAssignment(value: string): { studentId: string | null; groupId: s
   if (value.startsWith("g:")) return { studentId: null, groupId: value.slice(2) };
   if (value.startsWith("s:")) return { studentId: value.slice(2), groupId: null };
   return { studentId: null, groupId: null };
+}
+
+function descriptionPreview(text: string, max = 100): string {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  if (!oneLine) return "";
+  if (oneLine.length <= max) return oneLine;
+  return `${oneLine.slice(0, max)}…`;
 }
 
 // ---------- Main Component ----------
@@ -286,11 +316,15 @@ export function HomeworkEditor({
     return parseAttachmentList(item.attachments);
   }
 
-  async function handleUpload(fileList: FileList | null, setTarget: React.Dispatch<React.SetStateAction<HomeworkAttachment[]>>) {
-    if (!fileList?.length) return;
+  async function uploadFilesArray(
+    files: File[],
+    setTarget: React.Dispatch<React.SetStateAction<HomeworkAttachment[]>>,
+    clearInputRef?: React.RefObject<HTMLInputElement | null>,
+  ) {
+    if (!files.length) return;
     setUploading(true);
     try {
-      for (const file of Array.from(fileList)) {
+      for (const file of files) {
         const formData = new FormData();
         formData.set("file", file);
         const res = await fetch("/api/upload", { method: "POST", body: formData });
@@ -304,8 +338,27 @@ export function HomeworkEditor({
       }
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (clearInputRef?.current) clearInputRef.current.value = "";
     }
+  }
+
+  async function handleUpload(
+    fileList: FileList | null,
+    setTarget: React.Dispatch<React.SetStateAction<HomeworkAttachment[]>>,
+    clearInputRef?: React.RefObject<HTMLInputElement | null>,
+  ) {
+    if (!fileList?.length) return;
+    await uploadFilesArray(Array.from(fileList), setTarget, clearInputRef);
+  }
+
+  function handlePasteAttachments(
+    e: React.ClipboardEvent,
+    setTarget: React.Dispatch<React.SetStateAction<HomeworkAttachment[]>>,
+  ) {
+    const files = imageFilesFromClipboard(e.nativeEvent);
+    if (!files.length) return;
+    e.preventDefault();
+    void uploadFilesArray(files, setTarget);
   }
 
   async function handleVoiceForHomework(
@@ -487,7 +540,10 @@ export function HomeworkEditor({
   return (
     <div className="space-y-4">
       <form onSubmit={handleAdd} className="flex flex-col gap-2 sm:flex-row sm:items-end">
-        <div className="flex-1 space-y-2">
+        <div
+          className="flex-1 space-y-2"
+          onPaste={(e) => handlePasteAttachments(e, setAttachments)}
+        >
           <div className="flex flex-wrap gap-2 items-start">
             <div className="flex-1 min-w-[180px] space-y-1">
               <input
@@ -523,7 +579,7 @@ export function HomeworkEditor({
                 accept="image/*,audio/*,.zip,.rar,.7z,.gz"
                 multiple
                 className="hidden"
-                onChange={(e) => handleUpload(e.target.files, setAttachments)}
+                onChange={(e) => handleUpload(e.target.files, setAttachments, fileInputRef)}
               />
               <button
                 type="button"
@@ -533,6 +589,7 @@ export function HomeworkEditor({
               >
                 {uploading ? "Uploading…" : "+ Add photo, audio or archive"}
               </button>
+              <span className="text-xs text-ink/40">· Paste screenshot (Ctrl+V)</span>
             </div>
             {attachments.length > 0 && (
               <ul className="flex flex-wrap gap-2 mt-1">
@@ -557,9 +614,14 @@ export function HomeworkEditor({
 
       <ul className="space-y-3">
         {items.filter((item) => item.status !== "closed").map((item) => (
-          <li key={item.id} className="flex flex-col gap-2 rounded-lg border border-ink/10 bg-white p-3">
+          <li key={item.id} className="overflow-hidden rounded-lg border border-ink/10 bg-white">
             {editing?.id === item.id ? (
-              <form onSubmit={handleUpdate} className="space-y-2">
+              <div className="p-3">
+              <form
+                onSubmit={handleUpdate}
+                className="space-y-2"
+                onPaste={(e) => handlePasteAttachments(e, setEditingAttachments)}
+              >
                 <div className="space-y-1">
                   <input
                     value={editing.title}
@@ -591,7 +653,7 @@ export function HomeworkEditor({
                       accept="image/*,audio/*,.zip,.rar,.7z,.gz"
                       multiple
                       className="hidden"
-                      onChange={(e) => handleUpload(e.target.files, setEditingAttachments)}
+                      onChange={(e) => handleUpload(e.target.files, setEditingAttachments, editFileInputRef)}
                     />
                     <button
                       type="button"
@@ -601,6 +663,7 @@ export function HomeworkEditor({
                     >
                       {uploading ? "Uploading…" : "+ Add photo, audio or archive"}
                     </button>
+                    <span className="text-xs text-ink/40">· Paste screenshot (Ctrl+V)</span>
                   </div>
                   {editingAttachments.length > 0 && (
                     <ul className="flex flex-wrap gap-2 mt-1">
@@ -632,33 +695,94 @@ export function HomeworkEditor({
                   </button>
                 </div>
               </form>
+              </div>
             ) : (
-              <>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-medium text-ink">{item.title}</h3>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                        item.groupId
-                          ? "bg-accent/10 text-accent font-medium"
-                          : "text-ink/50"
-                      }`}>
-                        {assignmentLabel(item)}
-                      </span>
-                    </div>
-                    {item.description && (
-                      <LinkifiedText
-                        text={item.description}
-                        className="mt-1 whitespace-pre-wrap text-sm text-ink/70"
-                      />
-                    )}
-                    {parseAttachments(item).length > 0 && (
-                      <p className="mt-1 text-xs text-ink/50">
-                        Attachments: {parseAttachments(item).map((a) => a.name).join(", ")}
+              <details className="group [&_summary::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-start justify-between gap-2 p-3">
+                  <div className="flex min-w-0 flex-1 gap-2">
+                    <span
+                      className="mt-0.5 shrink-0 text-xs text-ink/40 transition-transform group-open:rotate-90"
+                      aria-hidden
+                    >
+                      ▶
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-medium text-ink">{item.title}</h3>
+                        <span
+                          className={`text-xs px-1.5 py-0.5 rounded-full ${
+                            item.groupId
+                              ? "bg-accent/10 text-accent font-medium"
+                              : "text-ink/50"
+                          }`}
+                        >
+                          {assignmentLabel(item)}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 line-clamp-2 text-xs text-ink/50">
+                        {item.description.trim()
+                          ? descriptionPreview(item.description, 140)
+                          : "No description · expand for details and responses"}
                       </p>
-                    )}
+                      {parseAttachments(item).length > 0 && (
+                        <p className="mt-0.5 text-xs text-ink/40">
+                          {parseAttachments(item).length} attachment
+                          {parseAttachments(item).length !== 1 ? "s" : ""}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div
+                    className="flex shrink-0 items-center gap-1"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleToggleStatus(item)}
+                      title="Mark as done"
+                      className="flex items-center gap-1 rounded px-2 py-1 text-sm text-ink/40 hover:text-green-600 hover:bg-green-50 transition-colors"
+                    >
+                      ☐
+                      <span className="hidden sm:inline">Done</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing(item);
+                        setEditingAttachments(parseAttachments(item));
+                        setEditingAssignment(encodeAssignment(item.studentId, item.groupId));
+                      }}
+                      className="btn-secondary text-sm"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={notifyingId === item.id}
+                      onClick={() => handleNotifyNow(item.id)}
+                      title="Email students this homework now (preview + link)"
+                      className="btn-secondary text-sm border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
+                    >
+                      {notifyingId === item.id ? "Sending…" : "Notify"}
+                    </button>
+                    <button type="button" onClick={() => handleDelete(item.id)} className="text-sm text-red-600 hover:underline">Delete</button>
+                  </div>
+                </summary>
+                <div className="space-y-2 border-t border-ink/10 px-3 pb-3 pt-2">
+                  {item.description.trim() ? (
+                    <LinkifiedText
+                      text={item.description}
+                      className="whitespace-pre-wrap text-sm text-ink/70"
+                    />
+                  ) : null}
+                  {parseAttachments(item).length > 0 && (
+                    <p className="text-xs text-ink/50">
+                      Attachments: {parseAttachments(item).map((a) => a.name).join(", ")}
+                    </p>
+                  )}
 
-                    {(() => {
+                  {(() => {
                       const groupMembers = item.groupId
                         ? (groups.find((g) => g.id === item.groupId)?.students ?? [])
                         : [];
@@ -839,41 +963,8 @@ export function HomeworkEditor({
 
                       return null;
                     })()}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleStatus(item)}
-                      title="Mark as done"
-                      className="flex items-center gap-1 rounded px-2 py-1 text-sm text-ink/40 hover:text-green-600 hover:bg-green-50 transition-colors"
-                    >
-                      ☐
-                      <span className="hidden sm:inline">Done</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditing(item);
-                        setEditingAttachments(parseAttachments(item));
-                        setEditingAssignment(encodeAssignment(item.studentId, item.groupId));
-                      }}
-                      className="btn-secondary text-sm"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      disabled={notifyingId === item.id}
-                      onClick={() => handleNotifyNow(item.id)}
-                      title="Email students this homework now (preview + link)"
-                      className="btn-secondary text-sm border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
-                    >
-                      {notifyingId === item.id ? "Sending…" : "Notify"}
-                    </button>
-                    <button type="button" onClick={() => handleDelete(item.id)} className="text-sm text-red-600 hover:underline">Delete</button>
-                  </div>
                 </div>
-              </>
+              </details>
             )}
           </li>
         ))}
@@ -955,24 +1046,65 @@ export function HomeworkEditor({
                 ) : (
                   <ul className="space-y-3">
                     {filtered.map((item) => (
-                      <li key={item.id} className="flex flex-col gap-2 rounded-lg border border-ink/5 bg-white/60 p-3 opacity-70">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="font-medium text-ink/60 line-through">{item.title}</h3>
-                              <span className="text-xs text-ink/40">({assignmentLabel(item)})</span>
-                              {item.updatedAt && (
-                                <span className="text-xs text-ink/30">
-                                  {new Date(item.updatedAt).toLocaleDateString()}
-                                </span>
-                              )}
+                      <li key={item.id} className="overflow-hidden rounded-lg border border-ink/5 bg-white/60 opacity-70">
+                        <details className="group [&_summary::-webkit-details-marker]:hidden">
+                          <summary className="flex cursor-pointer list-none items-start justify-between gap-2 p-3">
+                            <div className="flex min-w-0 flex-1 gap-2">
+                              <span
+                                className="mt-0.5 shrink-0 text-xs text-ink/30 transition-transform group-open:rotate-90"
+                                aria-hidden
+                              >
+                                ▶
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h3 className="font-medium text-ink/60 line-through">{item.title}</h3>
+                                  <span className="text-xs text-ink/40">({assignmentLabel(item)})</span>
+                                  {item.updatedAt && (
+                                    <span className="text-xs text-ink/30">
+                                      {new Date(item.updatedAt).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="mt-0.5 line-clamp-2 text-xs text-ink/45">
+                                  {item.description.trim()
+                                    ? descriptionPreview(item.description, 120)
+                                    : "No description · expand for full text and responses"}
+                                </p>
+                              </div>
                             </div>
-                            {item.description && (
+                            <div
+                              className="flex shrink-0 items-center gap-1"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleToggleStatus(item)}
+                                title="Reopen"
+                                className="flex items-center gap-1 rounded px-2 py-1 text-sm text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+                              >
+                                ☑ <span className="hidden sm:inline">Reopen</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={notifyingId === item.id}
+                                onClick={() => handleNotifyNow(item.id)}
+                                title="Email students this homework now"
+                                className="btn-secondary text-sm border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
+                              >
+                                {notifyingId === item.id ? "Sending…" : "Notify"}
+                              </button>
+                              <button type="button" onClick={() => handleDelete(item.id)} className="text-sm text-red-400 hover:text-red-600 hover:underline">Delete</button>
+                            </div>
+                          </summary>
+                          <div className="space-y-2 border-t border-ink/5 px-3 pb-3 pt-2">
+                            {item.description.trim() ? (
                               <LinkifiedText
                                 text={item.description}
-                                className="mt-1 whitespace-pre-wrap text-sm text-ink/50"
+                                className="whitespace-pre-wrap text-sm text-ink/50"
                               />
-                            )}
+                            ) : null}
                             {item.responses && item.responses.length > 0 && (
                               <div className="mt-2 rounded border border-ink/10 bg-ink/5 p-2 space-y-1">
                                 <p className="text-xs font-semibold text-ink/40 uppercase tracking-wide">Student responses</p>
@@ -995,27 +1127,7 @@ export function HomeworkEditor({
                               </div>
                             )}
                           </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleStatus(item)}
-                              title="Reopen"
-                              className="flex items-center gap-1 rounded px-2 py-1 text-sm text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
-                            >
-                              ☑ <span className="hidden sm:inline">Reopen</span>
-                            </button>
-                            <button
-                              type="button"
-                              disabled={notifyingId === item.id}
-                              onClick={() => handleNotifyNow(item.id)}
-                              title="Email students this homework now"
-                              className="btn-secondary text-sm border-accent/30 text-accent hover:bg-accent/10 disabled:opacity-50"
-                            >
-                              {notifyingId === item.id ? "Sending…" : "Notify"}
-                            </button>
-                            <button type="button" onClick={() => handleDelete(item.id)} className="text-sm text-red-400 hover:text-red-600 hover:underline">Delete</button>
-                          </div>
-                        </div>
+                        </details>
                       </li>
                     ))}
                   </ul>

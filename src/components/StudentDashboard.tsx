@@ -7,6 +7,7 @@ import { WordleTab } from "./WordleTab";
 import { EmojiPicker } from "./EmojiPicker";
 import { LinkifiedText } from "./LinkifiedText";
 import { VoiceRecorder } from "./VoiceRecorder";
+import { imageFilesFromClipboard } from "@/lib/clipboard-images";
 type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
 type HomeworkResponse = {
   id: string;
@@ -167,13 +168,37 @@ function HomeworkSubmit({
     setUploading(true);
     try {
       for (const file of Array.from(fileList)) {
-        const data = await uploadFile(file).catch((e) => { alert(e.message); return null; });
+        const data = await uploadFile(file).catch((e: unknown) => {
+          alert(e instanceof Error ? e.message : "Upload failed");
+          return null;
+        });
         if (data) setAttachments((prev) => [...prev, { url: data.url, name: data.name, type: data.type }]);
       }
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    if (submitting) return;
+    const files = imageFilesFromClipboard(e.nativeEvent);
+    if (!files.length) return;
+    e.preventDefault();
+    void (async () => {
+      setUploading(true);
+      try {
+        for (const file of files) {
+          const data = await uploadFile(file).catch((err: unknown) => {
+            alert(err instanceof Error ? err.message : "Upload failed");
+            return null;
+          });
+          if (data) setAttachments((prev) => [...prev, { url: data.url, name: data.name, type: data.type }]);
+        }
+      } finally {
+        setUploading(false);
+      }
+    })();
   }
 
   async function handleVoiceRecorded(blob: Blob, filename: string) {
@@ -218,7 +243,10 @@ function HomeworkSubmit({
   }
 
   return (
-    <div className="mt-4 rounded-xl border border-ink/15 bg-gradient-to-b from-ink/[0.03] to-transparent p-4 shadow-sm">
+    <div
+      className="mt-4 rounded-xl border border-ink/15 bg-gradient-to-b from-ink/[0.03] to-transparent p-4 shadow-sm"
+      onPaste={handlePaste}
+    >
       {hasSavedWork && (
         <button
           type="button"
@@ -271,7 +299,7 @@ function HomeworkSubmit({
             </>
           )}
         </button>
-        <span className="text-xs text-ink/45">Voice, images, PDF, Office docs, zip, audio</span>
+        <span className="text-xs text-ink/45">Voice, images, PDF, Office docs, zip, audio · Paste screenshot (Ctrl+V)</span>
         <EmojiPicker onInsert={(e) => setResponse((prev) => prev + e)} />
         {attachments.length > 0 && (
           <ul className="flex flex-wrap gap-2 basis-full">
