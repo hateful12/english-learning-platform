@@ -32,14 +32,22 @@ export async function PATCH(
     },
   });
 
-  // Handle groupId via raw SQL since old Prisma client doesn't know this field
+  // groupId on Homework: keep in sync with studentId (mutual exclusivity)
   if (body.groupId !== undefined) {
     const newGroupId = body.groupId && typeof body.groupId === "string" ? body.groupId : null;
     if (newGroupId) {
-      await prisma.$executeRaw`UPDATE "Homework" SET groupId = ${newGroupId} WHERE id = ${id}`;
+      await prisma.$executeRaw`UPDATE "Homework" SET groupId = ${newGroupId}, studentId = NULL WHERE id = ${id}`;
     } else {
       await prisma.$executeRaw`UPDATE "Homework" SET groupId = NULL WHERE id = ${id}`;
     }
+  }
+
+  if (
+    body.studentId !== undefined &&
+    body.studentId &&
+    typeof body.studentId === "string"
+  ) {
+    await prisma.$executeRaw`UPDATE "Homework" SET groupId = NULL WHERE id = ${id}`;
   }
 
   return NextResponse.json(item);

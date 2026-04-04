@@ -23,10 +23,12 @@ export async function GET() {
 
         // Build matching homework IDs: all-students OR individual OR group
         let rows: Array<{ id: string }>;
+        // Group-targeted rows must have studentId NULL; otherwise a "个体" task leaked a groupId
+        // and every group member would still match the OR groupId IN (...) branch.
         if (groupIds.length > 0) {
           const placeholders = groupIds.map(() => "?").join(", ");
           rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
-            `SELECT id FROM "Homework" WHERE (studentId IS NULL AND groupId IS NULL) OR studentId = ? OR groupId IN (${placeholders})`,
+            `SELECT id FROM "Homework" WHERE (studentId IS NULL AND groupId IS NULL) OR studentId = ? OR (studentId IS NULL AND groupId IN (${placeholders}))`,
             studentId,
             ...groupIds
           );
@@ -237,23 +239,27 @@ export async function POST(request: NextRequest) {
       `;
     }
 
-    // Create without groupId first (old client doesn't know the field)
+    const sidRaw = studentId && typeof studentId === "string" ? studentId : null;
+    const gidRaw = groupId && typeof groupId === "string" ? groupId : null;
+
+    // Create with mutual exclusivity: group homework has studentId NULL; individual clears groupId.
     const item = await prisma.homework.create({
       data: {
         title,
         description: (description as string) ?? "",
         attachments: attachmentsJson,
-        studentId: studentId && typeof studentId === "string" ? studentId : null,
+        studentId: null,
       },
     });
 
-    // Set groupId via raw SQL if provided
-    if (groupId && typeof groupId === "string") {
-      await prisma.$executeRaw`UPDATE "Homework" SET groupId = ${groupId} WHERE id = ${item.id}`;
+    if (gidRaw) {
+      await prisma.$executeRaw`UPDATE "Homework" SET groupId = ${gidRaw}, studentId = NULL WHERE id = ${item.id}`;
+    } else if (sidRaw) {
+      await prisma.$executeRaw`UPDATE "Homework" SET studentId = ${sidRaw}, groupId = NULL WHERE id = ${item.id}`;
     }
 
-    const sid = studentId && typeof studentId === "string" ? studentId : null;
-    const gid = groupId && typeof groupId === "string" ? groupId : null;
+    const sid = sidRaw;
+    const gid = gidRaw;
     try {
       await scheduleRemindersForNewHomework(item.id, sid, gid);
     } catch (e) {
