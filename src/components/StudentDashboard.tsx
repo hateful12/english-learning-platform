@@ -7,7 +7,8 @@ import { WordleTab } from "./WordleTab";
 import { EmojiPicker } from "./EmojiPicker";
 import { LinkifiedText } from "./LinkifiedText";
 import { VoiceRecorder } from "./VoiceRecorder";
-import { imageFilesFromClipboard } from "@/lib/clipboard-images";
+import { clipboardHasRenderableImageSync, imageFilesFromClipboard } from "@/lib/clipboard-images";
+import { normalizeAttachmentUrl } from "@/lib/attachment-url";
 type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
 type HomeworkResponse = {
   id: string;
@@ -109,7 +110,7 @@ function TeacherFeedbackDisplay({
           {a.type === "audio" && (
             <div>
               <p className="text-xs text-ink/50 mb-1">{a.name}</p>
-              <audio src={a.url} controls className="w-full max-w-md" />
+              <audio src={normalizeAttachmentUrl(a.url)} controls className="w-full max-w-md" />
             </div>
           )}
         </div>
@@ -182,10 +183,11 @@ function HomeworkSubmit({
 
   function handlePaste(e: React.ClipboardEvent) {
     if (submitting) return;
-    const files = imageFilesFromClipboard(e.nativeEvent);
-    if (!files.length) return;
+    if (!clipboardHasRenderableImageSync(e.nativeEvent)) return;
     e.preventDefault();
     void (async () => {
+      const files = await imageFilesFromClipboard(e.nativeEvent);
+      if (!files.length) return;
       setUploading(true);
       try {
         for (const file of files) {
@@ -623,19 +625,19 @@ function HomeworkItem({
           {attachments.map((a) => (
             <div key={a.url} className="rounded border border-ink/10 bg-ink/5 p-2">
               {a.type === "image" && (
-                <a href={a.url} target="_blank" rel="noopener noreferrer" className="block">
-                  <img src={a.url} alt={a.name} className="max-h-48 rounded object-contain" />
+                <a href={normalizeAttachmentUrl(a.url)} target="_blank" rel="noopener noreferrer" className="block">
+                  <img src={normalizeAttachmentUrl(a.url)} alt={a.name} className="max-h-48 rounded object-contain" />
                   <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
                 </a>
               )}
               {a.type === "audio" && (
                 <div>
                   <p className="text-xs text-ink/60 mb-1">{a.name}</p>
-                  <audio src={a.url} controls className="w-full max-w-md" />
+                  <audio src={normalizeAttachmentUrl(a.url)} controls className="w-full max-w-md" />
                 </div>
               )}
               {a.type === "archive" && (
-                <a href={a.url} download={a.name} className="text-accent hover:underline flex items-center gap-1">
+                <a href={normalizeAttachmentUrl(a.url)} download={a.name} className="text-accent hover:underline flex items-center gap-1">
                   <span className="text-ink/70">📦</span> {a.name}
                 </a>
               )}
@@ -660,19 +662,19 @@ function HomeworkItem({
           {parseStudentResponseAttachments(myResponse.studentResponseAttachments).map((a) => (
             <div key={a.url} className="mt-2 rounded border border-ink/10 bg-ink/5 p-2">
               {a.type === "image" && (
-                <a href={a.url} target="_blank" rel="noopener noreferrer" className="block">
-                  <img src={a.url} alt={a.name} className="max-h-48 rounded object-contain" />
+                <a href={normalizeAttachmentUrl(a.url)} target="_blank" rel="noopener noreferrer" className="block">
+                  <img src={normalizeAttachmentUrl(a.url)} alt={a.name} className="max-h-48 rounded object-contain" />
                   <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
                 </a>
               )}
               {a.type === "audio" && (
                 <div>
                   <p className="text-xs text-ink/60 mb-1">{a.name}</p>
-                  <audio src={a.url} controls className="w-full max-w-md" />
+                  <audio src={normalizeAttachmentUrl(a.url)} controls className="w-full max-w-md" />
                 </div>
               )}
               {(a.type === "archive" || !["image", "audio"].includes(a.type)) && (
-                <a href={a.url} download={a.name} className="text-accent hover:underline flex items-center gap-1">
+                <a href={normalizeAttachmentUrl(a.url)} download={a.name} className="text-accent hover:underline flex items-center gap-1">
                   <span className="text-ink/70">📎</span> {a.name}
                 </a>
               )}

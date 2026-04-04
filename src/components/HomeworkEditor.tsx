@@ -5,7 +5,8 @@ import { Group } from "./GroupEditor";
 import { EmojiPicker } from "./EmojiPicker";
 import { LinkifiedText } from "./LinkifiedText";
 import { VoiceRecorder } from "./VoiceRecorder";
-import { imageFilesFromClipboard } from "@/lib/clipboard-images";
+import { clipboardHasRenderableImageSync, imageFilesFromClipboard } from "@/lib/clipboard-images";
+import { normalizeAttachmentUrl } from "@/lib/attachment-url";
 
 type Student = { id: string; email: string; name: string | null };
 export type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
@@ -141,10 +142,11 @@ function FeedbackForm({
         <div
           className="mt-1 rounded-md border border-accent/20 bg-accent/5 p-3 space-y-2"
           onPaste={(e) => {
-            const files = imageFilesFromClipboard(e.nativeEvent);
-            if (!files.length) return;
+            if (!clipboardHasRenderableImageSync(e.nativeEvent)) return;
             e.preventDefault();
             void (async () => {
+              const files = await imageFilesFromClipboard(e.nativeEvent);
+              if (!files.length) return;
               setUploading(true);
               try {
                 for (const file of files) {
@@ -355,10 +357,13 @@ export function HomeworkEditor({
     e: React.ClipboardEvent,
     setTarget: React.Dispatch<React.SetStateAction<HomeworkAttachment[]>>,
   ) {
-    const files = imageFilesFromClipboard(e.nativeEvent);
-    if (!files.length) return;
+    if (!clipboardHasRenderableImageSync(e.nativeEvent)) return;
     e.preventDefault();
-    void uploadFilesArray(files, setTarget);
+    void (async () => {
+      const files = await imageFilesFromClipboard(e.nativeEvent);
+      if (!files.length) return;
+      await uploadFilesArray(files, setTarget);
+    })();
   }
 
   async function handleVoiceForHomework(
@@ -838,19 +843,19 @@ export function HomeworkEditor({
                                       {parseAttachmentList(response.studentResponseAttachments).map((a) => (
                                         <div key={a.url} className="mt-1 rounded border border-ink/10 bg-ink/5 p-2">
                                           {a.type === "image" && (
-                                            <a href={a.url} target="_blank" rel="noopener noreferrer" className="block">
-                                              <img src={a.url} alt={a.name} className="max-h-32 rounded object-contain" />
+                                            <a href={normalizeAttachmentUrl(a.url)} target="_blank" rel="noopener noreferrer" className="block">
+                                              <img src={normalizeAttachmentUrl(a.url)} alt={a.name} className="max-h-32 rounded object-contain" />
                                               <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
                                             </a>
                                           )}
                                           {a.type === "audio" && (
                                             <div>
                                               <p className="text-xs text-ink/60 mb-0.5">{a.name}</p>
-                                              <audio src={a.url} controls className="h-8 w-full max-w-sm" />
+                                              <audio src={normalizeAttachmentUrl(a.url)} controls className="h-8 w-full max-w-sm" />
                                             </div>
                                           )}
                                           {(a.type === "archive" || !["image", "audio"].includes(a.type)) && (
-                                            <a href={a.url} download={a.name} className="text-accent hover:underline flex items-center gap-1 text-xs">
+                                            <a href={normalizeAttachmentUrl(a.url)} download={a.name} className="text-accent hover:underline flex items-center gap-1 text-xs">
                                               📎 {a.name}
                                             </a>
                                           )}
@@ -867,7 +872,7 @@ export function HomeworkEditor({
                                               {a.type === "audio" && (
                                                 <div>
                                                   <p className="text-xs text-ink/50 mb-0.5">{a.name}</p>
-                                                  <audio src={a.url} controls className="h-8 w-full max-w-sm" />
+                                                  <audio src={normalizeAttachmentUrl(a.url)} controls className="h-8 w-full max-w-sm" />
                                                 </div>
                                               )}
                                             </div>
@@ -912,19 +917,19 @@ export function HomeworkEditor({
                                   {parseAttachmentList(r.studentResponseAttachments).map((a) => (
                                     <div key={a.url} className="mt-1 rounded border border-ink/10 bg-ink/5 p-2">
                                       {a.type === "image" && (
-                                        <a href={a.url} target="_blank" rel="noopener noreferrer" className="block">
-                                          <img src={a.url} alt={a.name} className="max-h-32 rounded object-contain" />
+                                        <a href={normalizeAttachmentUrl(a.url)} target="_blank" rel="noopener noreferrer" className="block">
+                                          <img src={normalizeAttachmentUrl(a.url)} alt={a.name} className="max-h-32 rounded object-contain" />
                                           <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
                                         </a>
                                       )}
                                       {a.type === "audio" && (
                                         <div>
                                           <p className="text-xs text-ink/60 mb-0.5">{a.name}</p>
-                                          <audio src={a.url} controls className="h-8 w-full max-w-sm" />
+                                          <audio src={normalizeAttachmentUrl(a.url)} controls className="h-8 w-full max-w-sm" />
                                         </div>
                                       )}
                                       {(a.type === "archive" || !["image", "audio"].includes(a.type)) && (
-                                        <a href={a.url} download={a.name} className="text-accent hover:underline flex items-center gap-1 text-xs">
+                                        <a href={normalizeAttachmentUrl(a.url)} download={a.name} className="text-accent hover:underline flex items-center gap-1 text-xs">
                                           📎 {a.name}
                                         </a>
                                       )}
@@ -941,7 +946,7 @@ export function HomeworkEditor({
                                           {a.type === "audio" && (
                                             <div>
                                               <p className="text-xs text-ink/50 mb-0.5">{a.name}</p>
-                                              <audio src={a.url} controls className="h-8 w-full max-w-sm" />
+                                              <audio src={normalizeAttachmentUrl(a.url)} controls className="h-8 w-full max-w-sm" />
                                             </div>
                                           )}
                                         </div>

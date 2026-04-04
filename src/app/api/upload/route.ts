@@ -95,6 +95,9 @@ export async function POST(request: NextRequest) {
   const filepath = path.join(UPLOAD_DIR, filename);
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  if (buffer.length === 0) {
+    return NextResponse.json({ error: "Empty file" }, { status: 400 });
+  }
   await fs.writeFile(filepath, buffer);
 
   const url = `/uploads/homework/${filename}`;

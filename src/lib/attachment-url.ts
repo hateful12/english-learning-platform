@@ -5,6 +5,9 @@
 export function normalizeAttachmentUrl(url: string): string {
   const u = (url ?? "").trim();
   if (!u) return u;
+  // Without a leading slash, the browser resolves against the *current path* (e.g. /teacher/dashboard),
+  // so /uploads/... becomes /teacher/uploads/... and images break.
+  if (u.startsWith("uploads/")) return `/${u}`;
   if (u.startsWith("/")) return u;
   try {
     const parsed = new URL(u);
