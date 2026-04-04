@@ -9,6 +9,7 @@ import { LinkifiedText } from "./LinkifiedText";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { clipboardHasRenderableImageSync, imageFilesFromClipboard } from "@/lib/clipboard-images";
 import { normalizeAttachmentUrl } from "@/lib/attachment-url";
+
 type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
 type HomeworkResponse = {
   id: string;
@@ -30,6 +31,22 @@ type Homework = {
   updatedAt?: string;
   responses?: HomeworkResponse[];
 };
+
+function parseAttachmentJsonArray(raw: unknown): HomeworkAttachment[] {
+  try {
+    const arr: unknown = Array.isArray(raw) ? raw : JSON.parse(typeof raw === "string" ? raw : "[]");
+    if (!Array.isArray(arr)) return [];
+    return arr.map((x: unknown) => {
+      if (!x || typeof x !== "object") return x as HomeworkAttachment;
+      const o = x as HomeworkAttachment;
+      return typeof o.url === "string"
+        ? { ...o, url: normalizeAttachmentUrl(o.url) }
+        : o;
+    });
+  } catch {
+    return [];
+  }
+}
 
 type Tab = "schedule" | "homework" | "payments" | "learn-ai" | "games";
 
@@ -57,31 +74,15 @@ function FluentLabComingSoon() {
 }
 
 function parseAttachments(item: Homework): HomeworkAttachment[] {
-  try {
-    const raw = item.attachments ?? "[]";
-    const arr = JSON.parse(typeof raw === "string" ? raw : "[]");
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
+  return parseAttachmentJsonArray(item.attachments ?? "[]");
 }
 
 function parseFeedbackAttachments(raw: string | undefined): HomeworkAttachment[] {
-  try {
-    const arr = JSON.parse(typeof raw === "string" ? raw : "[]");
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
+  return parseAttachmentJsonArray(raw ?? "[]");
 }
 
 function parseStudentResponseAttachments(raw: string | undefined): HomeworkAttachment[] {
-  try {
-    const arr = JSON.parse(typeof raw === "string" ? raw : "[]");
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
+  return parseAttachmentJsonArray(raw ?? "[]");
 }
 
 function TeacherFeedbackDisplay({

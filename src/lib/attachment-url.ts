@@ -3,18 +3,44 @@
  * current origin so CSP img-src/media-src 'self' and HTTPS stay valid.
  */
 export function normalizeAttachmentUrl(url: string): string {
-  const u = (url ?? "").trim();
+  let u = (url ?? "").trim().replace(/\\/g, "/");
   if (!u) return u;
-  // Without a leading slash, the browser resolves against the *current path* (e.g. /teacher/dashboard),
-  // so /uploads/... becomes /teacher/uploads/... and images break.
-  if (u.startsWith("uploads/")) return `/${u}`;
+
+  if (/^https?:\/\//i.test(u)) {
+    try {
+      const parsed = new URL(u);
+      u = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    } catch {
+      return u;
+    }
+  }
+
+  // Without a leading slash, the browser resolves against the *current path* (e.g. /teacher/dashboard).
+  if (u.startsWith("uploads/")) u = `/${u}`;
+
+  const marker = "/uploads/homework/";
+  const pos = u.indexOf(marker);
+  if (pos !== -1 && !u.startsWith("/api/uploads/homework/")) {
+    u = u.slice(pos);
+  }
+
+  // Legacy static path → App Router (reliable img/audio src in production behind PM2/nginx).
+  if (u.startsWith("/uploads/homework/")) {
+    const name = u.slice("/uploads/homework/".length).split("/")[0]?.split("?")[0]?.split("#")[0] ?? "";
+    if (name && !name.includes("..")) {
+      return `/api/uploads/homework/${name}`;
+    }
+  }
+
+  if (u.startsWith("/api/uploads/homework/")) return u.split("#")[0];
+
   if (u.startsWith("/")) return u;
   try {
     const parsed = new URL(u);
-    const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;
-    if (path.startsWith("/uploads/")) return path;
+    const pathOnly = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    if (pathOnly.startsWith("/uploads/")) return normalizeAttachmentUrl(pathOnly);
     const devHosts = new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]);
-    if (devHosts.has(parsed.hostname)) return path;
+    if (devHosts.has(parsed.hostname)) return normalizeAttachmentUrl(pathOnly);
   } catch {
     /* not a valid absolute URL */
   }

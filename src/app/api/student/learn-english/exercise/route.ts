@@ -13,6 +13,7 @@ import {
   openAiInvalidKeyMessage,
   openAiNotConfiguredMessage,
 } from "@/lib/openai-key";
+import { HOMEWORK_UPLOAD_DIR, homeworkPublicUrlForFilename, resolveHomeworkUploadDiskPath } from "@/lib/homework-upload-path";
 
 const CEFR_RE = /^(A1|A2|B1|B2|C1|C2)$/i;
 
@@ -53,15 +54,6 @@ function formatPriorSpeakingQuestionsForPrompt(questions: string[]): string {
   return body.trimEnd();
 }
 
-function resolveHomeworkUploadFilePath(publicUrl: string): string | null {
-  if (typeof publicUrl !== "string" || !publicUrl.startsWith("/uploads/homework/")) return null;
-  const base = path.basename(publicUrl);
-  if (!base || base.includes("..")) return null;
-  const dir = path.join(process.cwd(), "public", "uploads", "homework");
-  const full = path.resolve(path.join(dir, base));
-  if (!full.startsWith(path.resolve(dir))) return null;
-  return full;
-}
 
 async function transcribeAudioFile(openai: OpenAI, filePath: string): Promise<string> {
   const transcription = await openai.audio.transcriptions.create({
@@ -466,7 +458,10 @@ export async function POST(request: NextRequest) {
       if (audioUrlsRaw && typeof audioUrlsRaw === "object" && !Array.isArray(audioUrlsRaw)) {
         for (const [k, v] of Object.entries(audioUrlsRaw as Record<string, unknown>)) {
           const key = k.trim();
-          if (typeof v === "string" && v.startsWith("/uploads/homework/")) {
+          if (
+            typeof v === "string" &&
+            (v.startsWith("/uploads/homework/") || v.startsWith("/api/uploads/homework/"))
+          ) {
             audioUrls[key] = v;
           }
         }
@@ -483,7 +478,7 @@ export async function POST(request: NextRequest) {
         const ansRaw = (answers as Record<string, unknown>)[aid];
         let answer = typeof ansRaw === "string" ? ansRaw.trim().slice(0, 8000) : "";
 
-        const audioPath = audioUrls[aid] ? resolveHomeworkUploadFilePath(audioUrls[aid]) : null;
+        const audioPath = audioUrls[aid] ? resolveHomeworkUploadDiskPath(audioUrls[aid]) : null;
         if (audioPath) {
           try {
             await fs.promises.access(audioPath, fs.constants.R_OK);
@@ -577,12 +572,11 @@ Rules:
         try {
           const script = await buildUkrainianFeedbackSpeechScript(openai, structured);
           if (script) {
-            const dir = path.join(process.cwd(), "public", "uploads", "homework");
-            await fs.promises.mkdir(dir, { recursive: true });
+            await fs.promises.mkdir(HOMEWORK_UPLOAD_DIR, { recursive: true });
             const fname = `fbuk-${safeSid}-${Date.now()}-${randomBytes(6).toString("hex")}.mp3`;
-            const fullPath = path.join(dir, fname);
+            const fullPath = path.join(HOMEWORK_UPLOAD_DIR, fname);
             await synthesizeUkrainianFeedbackMp3(openai, script, fullPath);
-            feedbackAudioUkUrl = `/uploads/homework/${fname}`;
+            feedbackAudioUkUrl = homeworkPublicUrlForFilename(fname);
           }
         } catch (e) {
           console.error("learn-english feedback Ukrainian audio", e);

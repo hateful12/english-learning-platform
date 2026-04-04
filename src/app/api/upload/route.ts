@@ -3,8 +3,7 @@ import { isTeacherLoggedIn, getStudentId } from "@/lib/auth";
 import path from "path";
 import fs from "fs/promises";
 import { randomBytes } from "crypto";
-
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "homework");
+import { HOMEWORK_UPLOAD_DIR, homeworkPublicUrlForFilename } from "@/lib/homework-upload-path";
 
 const ALLOWED_TYPES = {
   image: ["image/jpeg", "image/png", "image/gif", "image/webp"],
@@ -90,9 +89,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "File too large (max 25 MB)." }, { status: 400 });
   }
 
-  await fs.mkdir(UPLOAD_DIR, { recursive: true });
+  await fs.mkdir(HOMEWORK_UPLOAD_DIR, { recursive: true });
   const filename = safeName(file.name);
-  const filepath = path.join(UPLOAD_DIR, filename);
+  const filepath = path.join(HOMEWORK_UPLOAD_DIR, filename);
 
   const buffer = Buffer.from(await file.arrayBuffer());
   if (buffer.length === 0) {
@@ -100,7 +99,7 @@ export async function POST(request: NextRequest) {
   }
   await fs.writeFile(filepath, buffer);
 
-  const url = `/uploads/homework/${filename}`;
+  const url = homeworkPublicUrlForFilename(filename);
   return NextResponse.json({
     url,
     name: file.name,

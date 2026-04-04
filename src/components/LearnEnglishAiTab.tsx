@@ -506,9 +506,10 @@ export function LearnEnglishAiTab({ assignedLevel }: { assignedLevel: string | n
         );
       }
 
+      const audioUrl = typeof data.feedbackAudioUkUrl === "string" ? data.feedbackAudioUkUrl : "";
       const audioUk =
-        typeof data.feedbackAudioUkUrl === "string" && data.feedbackAudioUkUrl.startsWith("/uploads/homework/")
-          ? data.feedbackAudioUkUrl
+        audioUrl.startsWith("/uploads/homework/") || audioUrl.startsWith("/api/uploads/homework/")
+          ? audioUrl
           : null;
 
       if (data.structured && typeof data.structured === "object") {
