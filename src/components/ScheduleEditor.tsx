@@ -344,37 +344,54 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
 
   function EventComponent({ event }: { event: CalendarEvent }) {
     const l = event.resource;
-    const paidInfo = (() => {
+
+    const paidEmoji = (() => {
       if (!canManagePayments) return null;
       if (l.studentId) {
-        return l.isPaid
-          ? <span className="text-[10px] opacity-90">✓ paid</span>
-          : <span className="text-[10px] opacity-70">⊘ unpaid</span>;
+        return l.isPaid ? "✅" : "🔴";
       }
       if (l.groupId && l.groupPayments && l.groupPayments.length > 0) {
         const paidCount = l.groupPayments.filter((g) => g.isPaid).length;
         const total = l.groupPayments.length;
-        return paidCount === total
-          ? <span className="text-[10px] opacity-90">✓ {paidCount}/{total}</span>
-          : <span className="text-[10px] opacity-70">{paidCount}/{total} paid</span>;
+        return paidCount === total ? "✅" : paidCount === 0 ? "🔴" : "🟡";
       }
       return null;
     })();
 
     return (
-      <div className="w-full h-full flex flex-col overflow-hidden" style={{ minWidth: 0 }}>
-        <p className="font-semibold text-xs leading-tight w-full overflow-hidden text-ellipsis whitespace-nowrap">
+      <div className="w-full h-full overflow-hidden" style={{ minWidth: 0, position: "relative" }}>
+        {paidEmoji && (
+          <span
+            style={{ position: "absolute", top: 0, right: 0, fontSize: 10, lineHeight: 1 }}
+            title={
+              l.studentId
+                ? l.isPaid ? "Paid" : "Unpaid"
+                : (() => {
+                    const pc = (l.groupPayments ?? []).filter((g) => g.isPaid).length;
+                    return `${pc}/${(l.groupPayments ?? []).length} paid`;
+                  })()
+            }
+          >
+            {paidEmoji}
+          </span>
+        )}
+        {l.zoomUrl && (
+          <span style={{ position: "absolute", bottom: 0, right: 0, fontSize: 10, lineHeight: 1 }}>
+            🔗
+          </span>
+        )}
+        <p
+          className="font-semibold leading-tight overflow-hidden text-ellipsis whitespace-nowrap"
+          style={{ fontSize: 11, paddingRight: paidEmoji ? 14 : 0 }}
+        >
           {l.title}
         </p>
-        <p className="text-[10px] opacity-80 w-full overflow-hidden text-ellipsis whitespace-nowrap">
+        <p
+          className="opacity-85 overflow-hidden text-ellipsis whitespace-nowrap"
+          style={{ fontSize: 10 }}
+        >
           {assigneeLabel(l)}
         </p>
-        {(l.zoomUrl || paidInfo) && (
-          <div className="flex items-center gap-1 mt-auto overflow-hidden">
-            {l.zoomUrl && <span className="text-[10px] opacity-70 shrink-0">🔗</span>}
-            {paidInfo}
-          </div>
-        )}
       </div>
     );
   }
