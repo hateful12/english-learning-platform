@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
-import { isTeacherLoggedIn } from "@/lib/auth";
+import { getTeacherSession } from "@/lib/auth";
 
 export async function GET() {
-  const loggedIn = await isTeacherLoggedIn();
-  return NextResponse.json({ loggedIn });
+  const teacher = await getTeacherSession();
+  return NextResponse.json({
+    loggedIn: teacher !== null,
+    teacher,
+  });
 }

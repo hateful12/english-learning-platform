@@ -15,7 +15,9 @@ model Student {
   paymentCode         String                @unique @default(cuid())
   lessonPrice         Int?
   level               String?              // CEFR level set by teacher: "A1" "A2" "B1" "B2" "C1" "C2"
+  teacherId           String?
   createdAt           DateTime              @default(now())
+  teacher             Teacher?              @relation(fields: [teacherId], references: [id], onDelete: SetNull)
   homework            Homework[]
   homeworkReminders   HomeworkReminder[]
   paymentInfos        PaymentInfo[]
@@ -60,7 +62,9 @@ model Invite {
   usedAt    DateTime?
   createdAt DateTime @default(now())
   studentId String?
+  createdByTeacherId String?
   student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  createdByTeacher Teacher? @relation("StudentInvitesCreatedBy", fields: [createdByTeacherId], references: [id], onDelete: SetNull)
 }
 
 model Homework {
@@ -122,15 +126,33 @@ model Teacher {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
-  role         String   @default("teacher") // "admin" can manage homeworks, links, payment
+  role         String   @default("teacher") // "teacher" | "super-admin"
   createdAt    DateTime @default(now())
+  students     Student[]
+  groups       Group[]
+  studentInvites Invite[] @relation("StudentInvitesCreatedBy")
+  teacherInvitesCreated TeacherInvite[] @relation("TeacherInvitesCreatedBy")
+}
+
+model TeacherInvite {
+  id                 String   @id @default(cuid())
+  token              String   @unique
+  email              String?
+  expiresAt          DateTime?
+  usedAt             DateTime?
+  createdAt          DateTime @default(now())
+  createdByTeacherId String?
+  createdTeacherId   String?
+  createdByTeacher   Teacher? @relation("TeacherInvitesCreatedBy", fields: [createdByTeacherId], references: [id], onDelete: SetNull)
 }
 
 model Group {
   id               String            @id @default(cuid())
   name             String
   lessonPrice      Int?
+  teacherId        String?
   createdAt        DateTime          @default(now())
+  teacher          Teacher?          @relation(fields: [teacherId], references: [id], onDelete: SetNull)
   students         StudentGroup[]
   homework         Homework[]
   scheduledLessons ScheduledLesson[]

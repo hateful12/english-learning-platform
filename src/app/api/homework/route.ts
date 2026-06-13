@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isTeacherLoggedIn, getStudentId } from "@/lib/auth";
+import { getStudentId, getTeacherSession, teacherCanAccessStudent } from "@/lib/auth";
 import { notifyStudentsNewHomework, scheduleRemindersForNewHomework } from "@/lib/homework-reminders";
 import { normalizeAttachmentPayloadList, normalizeAttachmentsJsonField } from "@/lib/attachment-url";
 import { studentSeesHomeworkRow } from "@/lib/homework-visibility";
@@ -12,12 +12,13 @@ export async function GET(request: NextRequest) {
     // Teacher dashboard must pass ?view=teacher. If both teacher + student cookies exist (same browser),
     // prefer student scope unless view=teacher — otherwise students would receive the full teacher list.
     const viewTeacher = request.nextUrl.searchParams.get("view") === "teacher";
-    const teacherLoggedIn = await isTeacherLoggedIn();
+    const teacherSession = await getTeacherSession();
+    const teacherLoggedIn = teacherSession !== null;
     const studentId = await getStudentId();
 
     let teacher = false;
     if (viewTeacher) {
-      if (!teacherLoggedIn) {
+      if (!teacherSession) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
       teacher = true;
@@ -70,12 +71,38 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    if (teacher && teacherSession && !teacherSession.isSuperAdmin) {
+      const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT h.id
+        FROM "Homework" h
+        LEFT JOIN "Student" s ON s.id = h.studentId
+        LEFT JOIN "Group" g ON g.id = h.groupId
+        WHERE h.studentId IS NULL AND h.groupId IS NULL
+           OR s.teacherId = ${teacherSession.id}
+           OR g.teacherId = ${teacherSession.id}
+           OR EXISTS (
+             SELECT 1
+             FROM "StudentGroup" sg
+             JOIN "Student" member ON member.id = sg.studentId
+             WHERE sg.groupId = h.groupId AND member.teacherId = ${teacherSession.id}
+           )
+      `;
+      matchingIds = rows.map((r) => r.id);
+    }
+
     const items = await prisma.homework.findMany({
       where: matchingIds !== null ? { id: { in: matchingIds } } : undefined,
       orderBy: { createdAt: "desc" },
       include: {
         ...(teacher
-          ? { responses: { include: { student: { select: { id: true, email: true, name: true } } } } }
+          ? {
+              responses: {
+                ...(teacherSession && !teacherSession.isSuperAdmin
+                  ? { where: { student: { teacherId: teacherSession.id } } }
+                  : {}),
+                include: { student: { select: { id: true, email: true, name: true } } },
+              },
+            }
           : studentId
             ? { responses: { where: { studentId } } }
             : {}),
@@ -229,8 +256,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const loggedIn = await isTeacherLoggedIn();
-    if (!loggedIn) {
+    const teacher = await getTeacherSession();
+    if (!teacher) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     let body: unknown;
@@ -277,6 +304,32 @@ export async function POST(request: NextRequest) {
 
     const sidRaw = studentId && typeof studentId === "string" ? studentId : null;
     const gidRaw = groupId && typeof groupId === "string" ? groupId : null;
+
+    if (!teacher.isSuperAdmin && !sidRaw && !gidRaw) {
+      return NextResponse.json({ error: "Choose a student or group" }, { status: 400 });
+    }
+    if (sidRaw && !(await teacherCanAccessStudent(teacher, sidRaw))) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+    if (gidRaw && !teacher.isSuperAdmin) {
+      const accessRows = await prisma.$queryRaw<Array<{ ok: number }>>`
+        SELECT COUNT(*) AS ok
+        FROM "Group" g
+        WHERE g.id = ${gidRaw}
+          AND (
+            g.teacherId = ${teacher.id}
+            OR EXISTS (
+              SELECT 1
+              FROM "StudentGroup" sg
+              JOIN "Student" s ON s.id = sg.studentId
+              WHERE sg.groupId = g.id AND s.teacherId = ${teacher.id}
+            )
+          )
+      `;
+      if (Number(accessRows[0]?.ok ?? 0) === 0) {
+        return NextResponse.json({ error: "Group not found" }, { status: 404 });
+      }
+    }
 
     // Create with mutual exclusivity: group homework has studentId NULL; individual clears groupId.
     const item = await prisma.homework.create({

@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
         name: typeof name === "string" ? name.trim() || null : null,
         passwordHash,
         paymentCode,
+        teacherId: invite.createdByTeacherId ?? null,
       },
     });
     await prisma.invite.update({

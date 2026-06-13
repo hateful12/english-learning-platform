@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isTeacherLoggedIn } from "@/lib/auth";
+import { getTeacherSession } from "@/lib/auth";
 import crypto from "crypto";
 
 function getAppUrl(request: NextRequest): string {
@@ -13,11 +13,12 @@ function getAppUrl(request: NextRequest): string {
 }
 
 export async function GET() {
-  const loggedIn = await isTeacherLoggedIn();
-  if (!loggedIn) {
+  const teacher = await getTeacherSession();
+  if (!teacher) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const invites = await prisma.invite.findMany({
+    where: teacher.isSuperAdmin ? undefined : { createdByTeacherId: teacher.id },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -38,13 +39,13 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const loggedIn = await isTeacherLoggedIn();
-  if (!loggedIn) {
+  const teacher = await getTeacherSession();
+  if (!teacher) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const token = crypto.randomBytes(24).toString("hex");
   const invite = await prisma.invite.create({
-    data: { token },
+    data: { token, createdByTeacherId: teacher.id },
   });
   const baseUrl = getAppUrl(request);
   const link = `${baseUrl}/join?token=${invite.token}`;

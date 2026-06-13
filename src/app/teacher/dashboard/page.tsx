@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { isTeacherLoggedIn } from "@/lib/auth";
+import { getTeacherSession } from "@/lib/auth";
 import { TeacherDashboard } from "@/components/TeacherDashboard";
 import { LogoutButton } from "@/components/LogoutButton";
 import { Logo } from "@/components/Logo";
@@ -7,8 +7,8 @@ import { HeaderBackground } from "@/components/HeaderBackground";
 import Link from "next/link";
 
 export default async function TeacherDashboardPage() {
-  const loggedIn = await isTeacherLoggedIn();
-  if (!loggedIn) {
+  const teacher = await getTeacherSession();
+  if (!teacher) {
     redirect("/teacher");
   }
   return (
@@ -19,7 +19,7 @@ export default async function TeacherDashboardPage() {
           <div className="flex items-center gap-3">
             <Logo />
             <span className="hidden sm:inline-flex items-center rounded-full border border-accent/30 bg-accent/8 px-2.5 py-0.5 text-xs font-semibold text-accent tracking-wide uppercase">
-              Teacher
+              {teacher.isSuperAdmin ? "Super-admin" : "Teacher"}
             </span>
           </div>
           <div className="flex items-center gap-4">
@@ -31,7 +31,7 @@ export default async function TeacherDashboardPage() {
         </div>
       </header>
       <main className="relative py-6 px-[4%] md:px-[7%]">
-        <TeacherDashboard />
+        <TeacherDashboard currentTeacher={teacher} />
       </main>
     </div>
   );

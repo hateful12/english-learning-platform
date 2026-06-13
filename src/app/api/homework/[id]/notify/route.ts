@@ -1,17 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isTeacherLoggedIn } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { getTeacherSession } from "@/lib/auth";
 import { notifyHomeworkById } from "@/lib/homework-reminders";
 
 export const runtime = "nodejs";
 
 /** Teacher: resend homework notification emails immediately (same content as “new homework” mail). */
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const teacher = await isTeacherLoggedIn();
+  const teacher = await getTeacherSession();
   if (!teacher) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await params;
+  if (!teacher.isSuperAdmin) {
+    const rows = await prisma.$queryRaw<Array<{ ok: number }>>`
+      SELECT COUNT(*) AS ok
+      FROM "Homework" h
+      LEFT JOIN "Student" s ON s.id = h.studentId
+      LEFT JOIN "Group" g ON g.id = h.groupId
+      WHERE h.id = ${id}
+        AND (
+          s.teacherId = ${teacher.id}
+          OR g.teacherId = ${teacher.id}
+          OR EXISTS (
+            SELECT 1
+            FROM "StudentGroup" sg
+            JOIN "Student" member ON member.id = sg.studentId
+            WHERE sg.groupId = h.groupId AND member.teacherId = ${teacher.id}
+          )
+        )
+    `;
+    if (Number(rows[0]?.ok ?? 0) === 0) {
+      return NextResponse.json({ error: "Homework not found" }, { status: 404 });
+    }
+  }
   const result = await notifyHomeworkById(id);
 
   if (!result.ok) {

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isTeacherLoggedIn, getStudentId } from "@/lib/auth";
+import { getStudentId, getTeacherSession } from "@/lib/auth";
 
 export async function GET() {
-  const teacher = await isTeacherLoggedIn();
-  if (teacher) {
+  const teacher = await getTeacherSession();
+  if (teacher?.isSuperAdmin) {
     const items = await prisma.paymentInfo.findMany({
       orderBy: { updatedAt: "desc" },
     });
@@ -28,8 +28,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const loggedIn = await isTeacherLoggedIn();
-  if (!loggedIn) {
+  const teacher = await getTeacherSession();
+  if (!teacher?.isSuperAdmin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const body = await request.json();
@@ -45,8 +45,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const loggedIn = await isTeacherLoggedIn();
-  if (!loggedIn) {
+  const teacher = await getTeacherSession();
+  if (!teacher?.isSuperAdmin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const body = await request.json();

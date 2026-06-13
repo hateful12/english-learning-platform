@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isTeacherLoggedIn } from "@/lib/auth";
+import { getTeacherSession } from "@/lib/auth";
 
 const MONOBANK_TOKEN_KEY = "monobank_token";
 const MONOBANK_CARD_KEY = "monobank_card";
@@ -17,8 +17,8 @@ function getAppUrl(request: NextRequest): string {
 }
 
 export async function GET(request: NextRequest) {
-  const teacher = await isTeacherLoggedIn();
-  if (!teacher) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const teacher = await getTeacherSession();
+  if (!teacher?.isSuperAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const rows = await prisma.settings.findMany({
     where: { key: { in: [MONOBANK_TOKEN_KEY, MONOBANK_CARD_KEY, APP_URL_KEY, LESSON_PRICE_KEY] } },
@@ -37,8 +37,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const teacher = await isTeacherLoggedIn();
-  if (!teacher) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const teacher = await getTeacherSession();
+  if (!teacher?.isSuperAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: unknown;
   try {

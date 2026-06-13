@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getStudentId, isTeacherLoggedIn } from "@/lib/auth";
+import { getStudentId, getTeacherSession } from "@/lib/auth";
 
 // GET /api/assessment
 // Student: returns their own assessments
 // Teacher: returns all students' latest completed assessment (for badge display)
 export async function GET() {
   try {
-    const teacher = await isTeacherLoggedIn();
+    const teacher = await getTeacherSession();
 
     if (teacher) {
       // Return the latest completed assessment for every student
       const students = await prisma.student.findMany({
+        where: teacher.isSuperAdmin ? undefined : { teacherId: teacher.id },
         select: { id: true },
       });
       const latestMap: Record<string, { level: string; score: number; completedAt: Date } | null> = {};

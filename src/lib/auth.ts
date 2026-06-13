@@ -5,6 +5,16 @@ import { prisma } from "@/lib/db";
 
 const TEACHER_COOKIE = "english_teacher_session";
 const STUDENT_COOKIE = "english_student_session";
+export const SUPER_ADMIN_EMAIL = "irenn.boiko@gmail.com";
+
+export type TeacherRole = "teacher" | "super-admin";
+
+export type TeacherSession = {
+  id: string;
+  email: string;
+  role: TeacherRole;
+  isSuperAdmin: boolean;
+};
 
 function getSessionSecret(): Uint8Array {
   const secret = process.env.NEXTAUTH_SECRET;
@@ -29,7 +39,7 @@ async function verifyToken(token: string): Promise<Record<string, string> | null
   }
 }
 
-// ——— Teacher (admin can manage homeworks, links, payment) ———
+// ——— Teacher ———
 export async function setTeacherSession(teacherId: string) {
   const maxAge = 60 * 60 * 24 * 7;
   const token = await signToken({ sub: teacherId, role: "teacher" }, maxAge);
@@ -49,19 +59,50 @@ export async function clearTeacherSession() {
   cookieStore.delete(TEACHER_COOKIE);
 }
 
-const TEACHER_ROLES = ["admin", "teacher"] as const;
+function normalizeTeacherRole(role: string | null | undefined, email: string): TeacherRole {
+  if (email.trim().toLowerCase() === SUPER_ADMIN_EMAIL) return "super-admin";
+  if (role === "super-admin" || role === "admin") return "super-admin";
+  return "teacher";
+}
 
-export async function isTeacherLoggedIn(): Promise<boolean> {
+export async function getTeacherSession(): Promise<TeacherSession | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(TEACHER_COOKIE)?.value;
-  if (!token) return false;
+  if (!token) return null;
   const payload = await verifyToken(token);
-  if (!payload?.sub) return false;
+  if (!payload?.sub) return null;
   const teacher = await prisma.teacher.findUnique({
     where: { id: payload.sub },
-    select: { role: true },
+    select: { id: true, email: true, role: true },
   });
-  return teacher != null && TEACHER_ROLES.includes(teacher.role as (typeof TEACHER_ROLES)[number]);
+  if (!teacher) return null;
+  const role = normalizeTeacherRole(teacher.role, teacher.email);
+  return {
+    id: teacher.id,
+    email: teacher.email,
+    role,
+    isSuperAdmin: role === "super-admin",
+  };
+}
+
+export async function isTeacherLoggedIn(): Promise<boolean> {
+  return (await getTeacherSession()) !== null;
+}
+
+export async function isSuperAdminTeacher(): Promise<boolean> {
+  return (await getTeacherSession())?.isSuperAdmin === true;
+}
+
+export async function teacherCanAccessStudent(
+  teacher: TeacherSession,
+  studentId: string
+): Promise<boolean> {
+  if (teacher.isSuperAdmin) return true;
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+    select: { teacherId: true },
+  });
+  return student?.teacherId === teacher.id;
 }
 
 /** Returns teacher id if email+password match a teacher, null otherwise. */
@@ -71,9 +112,9 @@ export async function verifyTeacherPassword(
 ): Promise<string | null> {
   const teacher = await prisma.teacher.findUnique({
     where: { email: email.trim().toLowerCase() },
-    select: { id: true, passwordHash: true, role: true },
+    select: { id: true, passwordHash: true },
   });
-  if (!teacher || !TEACHER_ROLES.includes(teacher.role as (typeof TEACHER_ROLES)[number])) return null;
+  if (!teacher) return null;
   const ok = await bcrypt.compare(password, teacher.passwordHash);
   return ok ? teacher.id : null;
 }

@@ -16,18 +16,18 @@ async function main() {
   if (existingAdmin) {
     await prisma.teacher.update({
       where: { email: adminEmail },
-      data: { passwordHash: adminHash, role: "admin" },
+      data: { passwordHash: adminHash, role: "super-admin" },
     });
-    console.log("Updated admin teacher:", adminEmail);
+    console.log("Updated super-admin teacher:", adminEmail);
   } else {
     await prisma.teacher.create({
       data: {
         email: adminEmail,
         passwordHash: adminHash,
-        role: "admin",
+        role: "super-admin",
       },
     });
-    console.log("Created admin teacher:", adminEmail);
+    console.log("Created super-admin teacher:", adminEmail);
   }
 
   // Teacher with role "teacher"

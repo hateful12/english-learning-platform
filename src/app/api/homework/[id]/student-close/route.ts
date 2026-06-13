@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isTeacherLoggedIn } from "@/lib/auth";
+import { getTeacherSession, teacherCanAccessStudent } from "@/lib/auth";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const loggedIn = await isTeacherLoggedIn();
-    if (!loggedIn) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const teacher = await getTeacherSession();
+    if (!teacher) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     let body: unknown;
     try { body = await request.json(); } catch {
@@ -20,6 +20,9 @@ export async function POST(
 
     if (!studentId || typeof studentId !== "string") {
       return NextResponse.json({ error: "studentId required" }, { status: 400 });
+    }
+    if (!(await teacherCanAccessStudent(teacher, studentId))) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
     }
 
     if (close) {
