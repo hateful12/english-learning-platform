@@ -299,6 +299,8 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
             onAdd={load}
             onDelete={load}
             onUpdate={load}
+            isSuperAdmin={currentTeacher.isSuperAdmin}
+            allTeachers={currentTeacher.isSuperAdmin ? teachers : []}
           />
         </section>
       )}

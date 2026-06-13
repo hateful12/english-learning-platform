@@ -8,7 +8,8 @@ import { VoiceRecorder } from "./VoiceRecorder";
 import { clipboardHasRenderableImageSync, imageFilesFromClipboard } from "@/lib/clipboard-images";
 import { normalizeAttachmentUrl } from "@/lib/attachment-url";
 
-type Student = { id: string; email: string; name: string | null };
+type Student = { id: string; email: string; name: string | null; teacherId?: string | null };
+type Teacher = { id: string; email: string; role?: string };
 export type HomeworkAttachment = { url: string; name: string; type: "image" | "audio" | "archive" };
 type ResponseItem = {
   id: string;
@@ -264,6 +265,8 @@ export function HomeworkEditor({
   onAdd,
   onDelete,
   onUpdate,
+  isSuperAdmin = false,
+  allTeachers = [],
 }: {
   items: Item[];
   students?: Student[];
@@ -271,6 +274,8 @@ export function HomeworkEditor({
   onAdd: () => void;
   onDelete: () => void;
   onUpdate: () => void;
+  isSuperAdmin?: boolean;
+  allTeachers?: Teacher[];
 }) {
   const [closingId, setClosingId] = useState<string | null>(null);
   const [notifyingId, setNotifyingId] = useState<string | null>(null);
@@ -307,6 +312,7 @@ export function HomeworkEditor({
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveGroup, setArchiveGroup] = useState<string>("");
   const [archiveMonth, setArchiveMonth] = useState<string>("");
+  const [filterBy, setFilterBy] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -506,6 +512,29 @@ export function HomeworkEditor({
     return s ? s.name || s.email : item.studentId;
   }
 
+  function teacherBadge(item: Item): string | null {
+    if (!isSuperAdmin || allTeachers.length === 0) return null;
+    let tid: string | null | undefined = null;
+    if (item.groupId) {
+      const g = groups.find((x) => x.id === item.groupId);
+      tid = g?.teacherId;
+    } else if (item.studentId) {
+      const s = students.find((x) => x.id === item.studentId);
+      tid = s?.teacherId;
+    }
+    if (!tid) return null;
+    const t = allTeachers.find((x) => x.id === tid);
+    if (!t) return null;
+    return t.role === "super-admin" ? `super-admin` : t.email;
+  }
+
+  function matchesFilter(item: Item): boolean {
+    if (!filterBy) return true;
+    if (filterBy.startsWith("g:")) return item.groupId === filterBy.slice(2);
+    if (filterBy.startsWith("s:")) return item.studentId === filterBy.slice(2);
+    return true;
+  }
+
   function AssignmentSelect({
     value,
     onChange,
@@ -541,6 +570,8 @@ export function HomeworkEditor({
       </select>
     );
   }
+
+  const activeItems = items.filter((item) => item.status !== "closed" && matchesFilter(item));
 
   return (
     <div className="space-y-4">
@@ -617,8 +648,49 @@ export function HomeworkEditor({
         </button>
       </form>
 
+      {(students.length > 0 || groups.length > 0) && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-ink/5 pb-3">
+          <span className="text-xs font-semibold text-ink/40 uppercase tracking-wide shrink-0">Filter:</span>
+          <select
+            value={filterBy}
+            onChange={(e) => setFilterBy(e.target.value)}
+            className="input text-sm py-1 w-auto"
+          >
+            <option value="">All assignments</option>
+            {groups.length > 0 && (
+              <optgroup label="Groups">
+                {groups.map((g) => (
+                  <option key={g.id} value={`g:${g.id}`}>{g.name}</option>
+                ))}
+              </optgroup>
+            )}
+            {students.length > 0 && (
+              <optgroup label="Students">
+                {students.map((s) => (
+                  <option key={s.id} value={`s:${s.id}`}>{s.name || s.email}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          {filterBy && (
+            <button
+              type="button"
+              onClick={() => setFilterBy("")}
+              className="text-xs text-ink/40 hover:text-ink/70 underline"
+            >
+              Clear
+            </button>
+          )}
+          {filterBy && (
+            <span className="text-xs text-ink/40">
+              {activeItems.length} active result{activeItems.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+      )}
+
       <ul className="space-y-3">
-        {items.filter((item) => item.status !== "closed").map((item) => (
+        {activeItems.map((item) => (
           <li key={item.id} className="overflow-hidden rounded-lg border border-ink/10 bg-white">
             {editing?.id === item.id ? (
               <div className="p-3">
@@ -723,6 +795,14 @@ export function HomeworkEditor({
                         >
                           {assignmentLabel(item)}
                         </span>
+                        {(() => {
+                          const tb = teacherBadge(item);
+                          return tb ? (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-600 font-medium">
+                              👤 {tb}
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                       <p className="mt-0.5 line-clamp-2 text-xs text-ink/50">
                         {item.description.trim()
@@ -984,12 +1064,13 @@ export function HomeworkEditor({
         ).filter(Boolean).sort((a, b) => b.localeCompare(a));
 
         const filtered = closed.filter((item) => {
+          const filterOk = matchesFilter(item);
           const groupOk =
             archiveGroup === "" ||
             (archiveGroup === "__all__" ? !item.studentId && !item.groupId : item.studentId === archiveGroup || item.groupId === archiveGroup);
           const monthOk =
             archiveMonth === "" || (item.updatedAt ?? "").slice(0, 7) === archiveMonth;
-          return groupOk && monthOk;
+          return filterOk && groupOk && monthOk;
         });
 
         function monthLabel(ym: string) {
