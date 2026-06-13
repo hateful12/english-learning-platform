@@ -3,10 +3,12 @@
 import { useState } from "react";
 
 type Student = { id: string; email: string; name: string | null };
+type Teacher = { id: string; email: string; role: string };
 export type Group = {
   id: string;
   name: string;
   lessonPrice?: number | null;
+  teacherId?: string | null;
   createdAt: string;
   students: Student[];
 };
@@ -18,11 +20,15 @@ function studentDisplay(s: Student) {
 function GroupCard({
   group,
   allStudents,
+  allTeachers,
+  canManagePayments,
   onSaved,
   onDeleted,
 }: {
   group: Group;
   allStudents: Student[];
+  allTeachers: Teacher[];
+  canManagePayments: boolean;
   onSaved: () => void;
   onDeleted: () => void;
 }) {
@@ -30,6 +36,7 @@ function GroupCard({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(group.name);
   const [lessonPrice, setLessonPrice] = useState(currentPrice != null ? String(currentPrice) : "");
+  const [selectedTeacherId, setSelectedTeacherId] = useState(group.teacherId ?? "");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     new Set(group.students.map((s) => s.id))
   );
@@ -48,6 +55,7 @@ function GroupCard({
     setEditing(false);
     setName(group.name);
     setLessonPrice(currentPrice != null ? String(currentPrice) : "");
+    setSelectedTeacherId(group.teacherId ?? "");
     setSelectedIds(new Set(group.students.map((s) => s.id)));
   }
 
@@ -61,7 +69,8 @@ function GroupCard({
         body: JSON.stringify({
           name: name.trim(),
           studentIds: Array.from(selectedIds),
-          lessonPrice: lessonPrice !== "" ? Number(lessonPrice) : 0,
+          ...(canManagePayments ? { lessonPrice: lessonPrice !== "" ? Number(lessonPrice) : 0 } : {}),
+          ...(canManagePayments ? { teacherId: selectedTeacherId || null } : {}),
         }),
       });
       if (!res.ok) {
@@ -97,23 +106,44 @@ function GroupCard({
             className="input w-full font-medium"
             placeholder="Group name"
           />
-          <div>
-            <label className="block text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1">
-              Lesson price (UAH)
-            </label>
-            <div className="relative w-36">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 text-sm">₴</span>
-              <input
-                type="number"
-                min="0"
-                step="50"
-                value={lessonPrice}
-                onChange={(e) => setLessonPrice(e.target.value)}
-                placeholder="e.g. 500"
-                className="input pl-7 w-full"
-              />
+          {canManagePayments && (
+            <div>
+              <label className="block text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1">
+                Lesson price (UAH)
+              </label>
+              <div className="relative w-36">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 text-sm">₴</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={lessonPrice}
+                  onChange={(e) => setLessonPrice(e.target.value)}
+                  placeholder="e.g. 500"
+                  className="input pl-7 w-full"
+                />
+              </div>
             </div>
-          </div>
+          )}
+          {canManagePayments && allTeachers.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1">
+                Assigned teacher
+              </label>
+              <select
+                value={selectedTeacherId}
+                onChange={(e) => setSelectedTeacherId(e.target.value)}
+                className="input w-full"
+              >
+                <option value="">— Unassigned —</option>
+                {allTeachers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.role === "super-admin" ? "Super-admin" : "Teacher"}: {t.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-2">Members</p>
             <ul className="space-y-1 max-h-48 overflow-y-auto">
@@ -158,11 +188,19 @@ function GroupCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="font-medium text-ink">{group.name}</p>
-              {currentPrice != null && (
+              {canManagePayments && currentPrice != null && (
                 <span className="text-xs text-ink/50 bg-ink/5 rounded px-2 py-0.5">
                   ₴{currentPrice}/lesson
                 </span>
               )}
+              {canManagePayments && (() => {
+                const assignedTeacher = allTeachers.find((t) => t.id === group.teacherId);
+                return assignedTeacher ? (
+                  <span className="text-xs text-accent/80 bg-accent/8 border border-accent/20 rounded px-2 py-0.5">
+                    {assignedTeacher.email}
+                  </span>
+                ) : null;
+              })()}
             </div>
             {group.students.length > 0 ? (
               <p className="mt-1 text-sm text-ink/60">
@@ -197,18 +235,23 @@ function GroupCard({
 export function GroupEditor({
   groups,
   allStudents,
+  allTeachers = [],
+  canManagePayments,
   onAdd,
   onUpdate,
   onDelete,
 }: {
   groups: Group[];
   allStudents: Student[];
+  allTeachers?: Teacher[];
+  canManagePayments: boolean;
   onAdd: () => void;
   onUpdate: () => void;
   onDelete: () => void;
 }) {
   const [name, setName] = useState("");
   const [lessonPrice, setLessonPrice] = useState("");
+  const [selectedTeacherId, setSelectedTeacherId] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -233,7 +276,8 @@ export function GroupEditor({
         body: JSON.stringify({
           name: name.trim(),
           studentIds: Array.from(selectedIds),
-          lessonPrice: lessonPrice !== "" ? Number(lessonPrice) : 0,
+          ...(canManagePayments ? { lessonPrice: lessonPrice !== "" ? Number(lessonPrice) : 0 } : {}),
+          ...(canManagePayments ? { teacherId: selectedTeacherId || null } : {}),
         }),
       });
       if (!res.ok) {
@@ -243,6 +287,7 @@ export function GroupEditor({
       }
       setName("");
       setLessonPrice("");
+      setSelectedTeacherId("");
       setSelectedIds(new Set());
       setFormOpen(false);
       onAdd();
@@ -272,23 +317,44 @@ export function GroupEditor({
             className="input w-full"
             autoFocus
           />
-          <div>
-            <label className="block text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1">
-              Lesson price (UAH)
-            </label>
-            <div className="relative w-36">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 text-sm">₴</span>
-              <input
-                type="number"
-                min="0"
-                step="50"
-                value={lessonPrice}
-                onChange={(e) => setLessonPrice(e.target.value)}
-                placeholder="e.g. 500"
-                className="input pl-7 w-full"
-              />
+          {canManagePayments && (
+            <div>
+              <label className="block text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1">
+                Lesson price (UAH)
+              </label>
+              <div className="relative w-36">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 text-sm">₴</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={lessonPrice}
+                  onChange={(e) => setLessonPrice(e.target.value)}
+                  placeholder="e.g. 500"
+                  className="input pl-7 w-full"
+                />
+              </div>
             </div>
-          </div>
+          )}
+          {canManagePayments && allTeachers.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-ink/50 uppercase tracking-wide mb-1">
+                Assign teacher
+              </label>
+              <select
+                value={selectedTeacherId}
+                onChange={(e) => setSelectedTeacherId(e.target.value)}
+                className="input w-full"
+              >
+                <option value="">— Unassigned —</option>
+                {allTeachers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.role === "super-admin" ? "Super-admin" : "Teacher"}: {t.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <p className="text-xs font-semibold text-ink/50 uppercase tracking-wide mb-2">Add students</p>
             {allStudents.length > 0 ? (
@@ -321,7 +387,7 @@ export function GroupEditor({
             </button>
             <button
               type="button"
-              onClick={() => { setFormOpen(false); setName(""); setLessonPrice(""); setSelectedIds(new Set()); }}
+              onClick={() => { setFormOpen(false); setName(""); setLessonPrice(""); setSelectedTeacherId(""); setSelectedIds(new Set()); }}
               className="btn-secondary text-sm py-1 px-3"
             >
               Cancel
@@ -340,6 +406,8 @@ export function GroupEditor({
               key={group.id}
               group={group}
               allStudents={allStudents}
+              allTeachers={allTeachers}
+              canManagePayments={canManagePayments}
               onSaved={onUpdate}
               onDeleted={onDelete}
             />

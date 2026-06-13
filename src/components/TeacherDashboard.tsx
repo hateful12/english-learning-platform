@@ -6,7 +6,30 @@ import { InviteSection } from "./InviteSection";
 import { GroupEditor, Group } from "./GroupEditor";
 import { ScheduleEditor } from "./ScheduleEditor";
 
-type Student = { id: string; email: string; name: string | null; paymentCode?: string; lessonPrice?: number | null; level?: string | null; createdAt?: string };
+type CurrentTeacher = {
+  id: string;
+  email: string;
+  role: "teacher" | "super-admin";
+  isSuperAdmin: boolean;
+};
+type TeacherSummary = {
+  id: string;
+  email: string;
+  role: "teacher" | "super-admin";
+  studentsCount: number;
+  createdAt?: string;
+};
+type Student = {
+  id: string;
+  email: string;
+  name: string | null;
+  paymentCode?: string;
+  lessonPrice?: number | null;
+  level?: string | null;
+  teacherId?: string | null;
+  teacher?: { id: string; email: string } | null;
+  createdAt?: string;
+};
 type HomeworkResponse = {
   id: string;
   response: string;
@@ -24,21 +47,26 @@ type Homework = {
   responses?: HomeworkResponse[];
 };
 
-type Tab = "homework" | "groups" | "students" | "schedule" | "payments" | "settings";
+type Tab = "homework" | "groups" | "students" | "schedule" | "payments" | "settings" | "teachers";
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
+const BASE_TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "schedule", label: "Schedule", icon: "📅" },
   { id: "homework", label: "Homework", icon: "📝" },
-  { id: "payments", label: "Payments", icon: "💳" },
   { id: "students", label: "Students", icon: "👩‍🎓" },
   { id: "groups", label: "Groups", icon: "👥" },
+];
+
+const SUPER_ADMIN_TABS: { id: Tab; label: string; icon: string }[] = [
+  ...BASE_TABS,
+  { id: "teachers", label: "Teachers", icon: "🧑‍🏫" },
+  { id: "payments", label: "Payments", icon: "💳" },
   { id: "settings", label: "Settings", icon: "⚙️" },
 ];
 
 const TEACHER_TAB_STORAGE_KEY = "english-teacher-dashboard-tab";
 
-function isTeacherDashboardTab(s: string | null): s is Tab {
-  return s !== null && TABS.some((t) => t.id === s);
+function isTeacherDashboardTab(s: string | null, tabs: { id: Tab }[]): s is Tab {
+  return s !== null && tabs.some((t) => t.id === s);
 }
 
 function persistTeacherTab(tab: Tab) {
@@ -68,12 +96,14 @@ type SettingsData = {
   appUrl: string;
 };
 
-export function TeacherDashboard() {
+export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTeacher }) {
+  const tabs = currentTeacher.isSuperAdmin ? SUPER_ADMIN_TABS : BASE_TABS;
   const [activeTab, setActiveTab] = useState<Tab>("schedule");
   const [students, setStudents] = useState<Student[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [homework, setHomework] = useState<Homework[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [teachers, setTeachers] = useState<TeacherSummary[]>([]);
   const [settingsData, setSettingsData] = useState<SettingsData>({ hasMonobankToken: false, monobankCard: "", appUrl: "" });
   const [loading, setLoading] = useState(true);
 
@@ -101,12 +131,14 @@ export function TeacherDashboard() {
 
 
   function loadTransactions() {
+    if (!currentTeacher.isSuperAdmin) return;
     fetch("/api/payments")
       .then((r) => r.json())
       .then((data) => setTransactions(Array.isArray(data) ? data : []));
   }
 
   function loadSettings() {
+    if (!currentTeacher.isSuperAdmin) return;
     fetch("/api/settings")
       .then((r) => r.json())
       .then((data: SettingsData) => {
@@ -116,20 +148,31 @@ export function TeacherDashboard() {
       });
   }
 
+  function loadTeachers() {
+    if (!currentTeacher.isSuperAdmin) return;
+    fetch("/api/teachers")
+      .then((r) => r.json())
+      .then((data) => setTeachers(Array.isArray(data) ? data : []))
+      .catch(() => setTeachers([]));
+  }
+
   useEffect(() => {
     load();
-    loadTransactions();
-    loadSettings();
-  }, []);
+    if (currentTeacher.isSuperAdmin) {
+      loadTransactions();
+      loadSettings();
+      loadTeachers();
+    }
+  }, [currentTeacher.isSuperAdmin]);
 
   useLayoutEffect(() => {
     try {
       const stored = localStorage.getItem(TEACHER_TAB_STORAGE_KEY);
-      if (isTeacherDashboardTab(stored)) setActiveTab(stored);
+      if (isTeacherDashboardTab(stored, tabs)) setActiveTab(stored);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [tabs]);
 
   async function togglePaid(lessonId: string, currentlyPaid: boolean) {
     await fetch("/api/payments", {
@@ -215,7 +258,7 @@ export function TeacherDashboard() {
       {/* Tab bar */}
       <div className="overflow-x-auto rounded-xl bg-ink/5 p-1.5">
         <nav className="flex gap-1 min-w-max">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             const badge = tab.id === "homework" && pendingHomework > 0 ? pendingHomework : null;
             return (
@@ -266,6 +309,8 @@ export function TeacherDashboard() {
           <GroupEditor
             groups={groups}
             allStudents={students}
+            allTeachers={currentTeacher.isSuperAdmin ? teachers : []}
+            canManagePayments={currentTeacher.isSuperAdmin}
             onAdd={load}
             onUpdate={load}
             onDelete={load}
@@ -290,6 +335,8 @@ export function TeacherDashboard() {
                       key={s.id}
                       student={s}
                       group={group ?? null}
+                      teachers={teachers}
+                      canManagePayments={currentTeacher.isSuperAdmin}
                       onUpdate={load}
                     />
                   );
@@ -307,11 +354,53 @@ export function TeacherDashboard() {
 
       {activeTab === "schedule" && (
         <section className="card overflow-hidden">
-          <ScheduleEditor students={students} groups={groups} />
+          <ScheduleEditor
+            students={students}
+            groups={groups}
+            canManagePayments={currentTeacher.isSuperAdmin}
+          />
         </section>
       )}
 
-      {activeTab === "payments" && (
+      {activeTab === "teachers" && currentTeacher.isSuperAdmin && (
+        <section className="card p-6 space-y-6">
+          <div>
+            <h2 className="font-serif text-xl font-semibold text-ink">Teachers</h2>
+            <p className="mt-1 text-sm text-ink/50">
+              Invite teachers and then assign students to them from the Students tab.
+            </p>
+          </div>
+
+          <TeacherInviteSection onCreated={loadTeachers} />
+
+          <div>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink/50">
+              Current teachers
+            </h3>
+            {teachers.length === 0 ? (
+              <p className="text-sm text-ink/50">No teachers yet.</p>
+            ) : (
+              <ul className="divide-y divide-ink/5 rounded-lg border border-ink/10">
+                {teachers.map((teacher) => (
+                  <li key={teacher.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-ink">{teacher.email}</p>
+                      <p className="text-xs text-ink/45">
+                        {teacher.role === "super-admin" ? "Super-admin" : "Teacher"}
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-ink/5 px-2.5 py-0.5 text-xs font-medium text-ink/60">
+                      {teacher.studentsCount} student{teacher.studentsCount === 1 ? "" : "s"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      )}
+
+      {activeTab === "payments" && currentTeacher.isSuperAdmin && (
         <section className="card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-serif text-xl font-semibold text-ink">Transactions</h2>
@@ -420,7 +509,7 @@ export function TeacherDashboard() {
         </section>
       )}
 
-      {activeTab === "settings" && (
+      {activeTab === "settings" && currentTeacher.isSuperAdmin && (
         <section className="card p-6 space-y-8">
           <div>
             <h2 className="font-serif text-xl font-semibold text-ink mb-1">Monobank integration</h2>
@@ -511,6 +600,129 @@ export function TeacherDashboard() {
   );
 }
 
+type TeacherInvite = {
+  id: string;
+  token: string;
+  email: string | null;
+  usedAt: string | null;
+  createdAt: string;
+  createdTeacherId?: string | null;
+};
+
+function TeacherInviteSection({ onCreated }: { onCreated: () => void }) {
+  const [invites, setInvites] = useState<TeacherInvite[]>([]);
+  const [email, setEmail] = useState("");
+  const [link, setLink] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState("");
+
+  function load() {
+    fetch("/api/teacher-invite", { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => setInvites(Array.isArray(data) ? data : []))
+      .catch(() => setInvites([]));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function createInvite(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setLink(null);
+    setError("");
+    const res = await fetch("/api/teacher-invite", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim() || undefined }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setLoading(false);
+    if (res.ok && data.link) {
+      setLink(data.link);
+      setEmail("");
+      load();
+      onCreated();
+      return;
+    }
+    setError(data.error || "Could not create invite");
+  }
+
+  function copyLink(url: string) {
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+
+  return (
+    <div className="space-y-4 rounded-lg border border-ink/10 bg-ink/[0.02] p-4">
+      <form onSubmit={createInvite} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="flex-1">
+          <label className="mb-1 block text-sm font-medium text-ink">Teacher email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="input w-full"
+            placeholder="teacher@example.com"
+          />
+        </div>
+        <button type="submit" disabled={loading} className="btn-primary">
+          {loading ? "Creating…" : "Create teacher invite"}
+        </button>
+      </form>
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {link && (
+        <div className="rounded-lg border border-ink/10 bg-white p-3">
+          <p className="text-xs font-medium text-ink/60">New teacher invite link:</p>
+          <div className="mt-1 flex items-center gap-2">
+            <code className="flex-1 truncate text-sm text-ink">{link}</code>
+            <button
+              type="button"
+              onClick={() => copyLink(link)}
+              className="btn-secondary shrink-0 text-sm"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {invites.length > 0 && (
+        <div>
+          <p className="mb-2 text-sm font-medium text-ink/70">Recent teacher invites</p>
+          <ul className="space-y-1 text-sm">
+            {invites.slice(0, 10).map((invite) => (
+              <li key={invite.id} className="flex items-center justify-between gap-2">
+                <span className="truncate text-ink/70">
+                  {invite.email || `…${invite.token.slice(-8)}`} —{" "}
+                  {invite.usedAt ? "Used" : "Unused"}
+                </span>
+                {!invite.usedAt && (
+                  <button
+                    type="button"
+                    onClick={() => copyLink(`${baseUrl}/teacher/join?token=${invite.token}`)}
+                    className="shrink-0 text-accent hover:underline"
+                  >
+                    Copy link
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 
 const LEVEL_STYLES: Record<string, string> = {
@@ -525,10 +737,14 @@ const LEVEL_STYLES: Record<string, string> = {
 function StudentRow({
   student,
   group,
+  teachers,
+  canManagePayments,
   onUpdate,
 }: {
   student: Student;
   group: { id: string; name: string } | null;
+  teachers: TeacherSummary[];
+  canManagePayments: boolean;
   onUpdate: () => void;
 }) {
   const currentPrice = student.lessonPrice != null ? student.lessonPrice / 100 : null;
@@ -536,6 +752,7 @@ function StudentRow({
   const [priceInput, setPriceInput] = useState(currentPrice != null ? String(currentPrice) : "");
   const [savingPrice, setSavingPrice] = useState(false);
   const [savingLevel, setSavingLevel] = useState(false);
+  const [savingTeacher, setSavingTeacher] = useState(false);
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [tempPassword, setTempPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
@@ -577,6 +794,17 @@ function StudentRow({
     });
     setSavingPrice(false);
     setEditingPrice(false);
+    onUpdate();
+  }
+
+  async function setTeacher(teacherId: string) {
+    setSavingTeacher(true);
+    await fetch("/api/students", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: student.id, teacherId: teacherId || null }),
+    });
+    setSavingTeacher(false);
     onUpdate();
   }
 
@@ -656,38 +884,60 @@ function StudentRow({
           {savingLevel && <span className="text-xs text-ink/40">…</span>}
         </div>
 
-        {/* Lesson price */}
-        {editingPrice ? (
+        {canManagePayments && (
           <div className="flex items-center gap-1">
-            <span className="text-xs text-ink/40">₴</span>
-            <input
-              type="number"
-              min="0"
-              step="50"
-              autoFocus
-              value={priceInput}
-              onChange={(e) => setPriceInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") savePrice(); if (e.key === "Escape") setEditingPrice(false); }}
-              className="input text-xs py-0.5 w-20"
-              placeholder="price"
-            />
-            <button type="button" disabled={savingPrice} onClick={savePrice} className="text-xs text-accent hover:underline">
-              {savingPrice ? "…" : "Save"}
-            </button>
-            <button type="button" onClick={() => setEditingPrice(false)} className="text-xs text-ink/40 hover:underline">Cancel</button>
+            <select
+              value={student.teacherId ?? ""}
+              disabled={savingTeacher}
+              onChange={(e) => setTeacher(e.target.value)}
+              className="text-xs text-ink/50 border border-dashed border-ink/20 rounded px-1.5 py-0.5 bg-transparent hover:border-ink/40 transition-colors cursor-pointer disabled:opacity-50"
+              title="Assign teacher"
+            >
+              <option value="">No teacher</option>
+              {teachers.map((teacher) => (
+                <option key={teacher.id} value={teacher.id}>
+                  {teacher.role === "super-admin" ? "Super-admin" : "Teacher"}: {teacher.email}
+                </option>
+              ))}
+            </select>
+            {savingTeacher && <span className="text-xs text-ink/40">…</span>}
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => { setPriceInput(currentPrice != null ? String(currentPrice) : ""); setEditingPrice(true); }}
-            className="text-xs text-ink/50 hover:text-ink/80 border border-dashed border-ink/20 rounded px-2 py-0.5 hover:border-ink/40 transition-colors"
-            title="Set lesson price"
-          >
-            {currentPrice != null ? `₴${currentPrice}/lesson` : "+ set price"}
-          </button>
         )}
 
-        {student.paymentCode && (
+        {/* Lesson price */}
+        {canManagePayments && (
+          editingPrice ? (
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-ink/40">₴</span>
+              <input
+                type="number"
+                min="0"
+                step="50"
+                autoFocus
+                value={priceInput}
+                onChange={(e) => setPriceInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") savePrice(); if (e.key === "Escape") setEditingPrice(false); }}
+                className="input text-xs py-0.5 w-20"
+                placeholder="price"
+              />
+              <button type="button" disabled={savingPrice} onClick={savePrice} className="text-xs text-accent hover:underline">
+                {savingPrice ? "…" : "Save"}
+              </button>
+              <button type="button" onClick={() => setEditingPrice(false)} className="text-xs text-ink/40 hover:underline">Cancel</button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setPriceInput(currentPrice != null ? String(currentPrice) : ""); setEditingPrice(true); }}
+              className="text-xs text-ink/50 hover:text-ink/80 border border-dashed border-ink/20 rounded px-2 py-0.5 hover:border-ink/40 transition-colors"
+              title="Set lesson price"
+            >
+              {currentPrice != null ? `₴${currentPrice}/lesson` : "+ set price"}
+            </button>
+          )
+        )}
+
+        {canManagePayments && student.paymentCode && (
           <span className="font-mono text-xs text-ink/40 bg-ink/5 rounded px-2 py-0.5">
             {student.paymentCode}
           </span>
@@ -718,15 +968,17 @@ function StudentRow({
           {showPasswordReset ? "Close" : "New password"}
         </button>
 
-        <button
-          type="button"
-          onClick={() => void deleteStudent()}
-          disabled={deleting}
-          className="text-xs text-red-600/90 hover:text-red-700 border border-dashed border-red-200 rounded px-2 py-0.5 hover:border-red-300 transition-colors disabled:opacity-50"
-          title="Permanently remove this student from the app"
-        >
-          {deleting ? "Removing…" : "Delete student"}
-        </button>
+        {canManagePayments && (
+          <button
+            type="button"
+            onClick={() => void deleteStudent()}
+            disabled={deleting}
+            className="text-xs text-red-600/90 hover:text-red-700 border border-dashed border-red-200 rounded px-2 py-0.5 hover:border-red-300 transition-colors disabled:opacity-50"
+            title="Permanently remove this student from the app"
+          >
+            {deleting ? "Removing…" : "Delete student"}
+          </button>
+        )}
       </div>
       </div>
 
