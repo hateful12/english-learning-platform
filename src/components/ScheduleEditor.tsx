@@ -14,6 +14,42 @@ const localizer = dateFnsLocalizer({
   locales: { "en-US": enUS },
 });
 
+// ── Calendar event colours ────────────────────────────────────────────────
+const COLOR_PALETTE = [
+  "#e94560", // rose / app accent
+  "#3b82f6", // blue
+  "#10b981", // emerald
+  "#f59e0b", // amber
+  "#8b5cf6", // violet
+  "#ec4899", // pink
+  "#06b6d4", // cyan
+  "#f97316", // orange
+  "#6366f1", // indigo
+  "#a855f7", // purple
+  "#14b8a6", // teal
+  "#84cc16", // lime
+];
+
+const COLOR_PALETTE_LABELS = [
+  "Rose", "Blue", "Emerald", "Amber",
+  "Violet", "Pink", "Cyan", "Orange",
+  "Indigo", "Purple", "Teal", "Lime",
+];
+
+const LS_COLOR_KEY = "english-schedule-colors";
+
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function defaultColorForKey(key: string): string {
+  return COLOR_PALETTE[hashStr(key) % COLOR_PALETTE.length];
+}
+
 type Student = { id: string; email: string; name: string | null };
 type Group = { id: string; name: string };
 
@@ -81,9 +117,10 @@ type FormState = typeof emptyForm;
 interface ScheduleEditorProps {
   students: Student[];
   groups: Group[];
+  canManagePayments: boolean;
 }
 
-export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
+export function ScheduleEditor({ students, groups, canManagePayments }: ScheduleEditorProps) {
   const [lessons, setLessons] = useState<ScheduledLesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -100,6 +137,35 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
   const [markPaidDate, setMarkPaidDate] = useState("");
   const [markPaidStudentId, setMarkPaidStudentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [colorMap, setColorMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(LS_COLOR_KEY) ?? "{}");
+      if (stored && typeof stored === "object") setColorMap(stored as Record<string, string>);
+    } catch {}
+  }, []);
+
+  function getEventColor(key: string | null): string {
+    if (!key) return "#94a3b8";
+    return colorMap[key] ?? defaultColorForKey(key);
+  }
+
+  function setEntityColor(key: string, color: string) {
+    setColorMap((prev) => {
+      const next = { ...prev, [key]: color };
+      try { localStorage.setItem(LS_COLOR_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  const eventPropGetter = useCallback((event: CalendarEvent) => {
+    const l = event.resource;
+    const key = l.studentId ? `student:${l.studentId}` : l.groupId ? `group:${l.groupId}` : null;
+    const color = getEventColor(key);
+    return { style: { backgroundColor: color, borderColor: color } };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colorMap]);
 
   const fetchLessons = useCallback(async () => {
     try {
@@ -278,25 +344,37 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
 
   function EventComponent({ event }: { event: CalendarEvent }) {
     const l = event.resource;
+    const paidInfo = (() => {
+      if (!canManagePayments) return null;
+      if (l.studentId) {
+        return l.isPaid
+          ? <span className="text-[10px] opacity-90">✓ paid</span>
+          : <span className="text-[10px] opacity-70">⊘ unpaid</span>;
+      }
+      if (l.groupId && l.groupPayments && l.groupPayments.length > 0) {
+        const paidCount = l.groupPayments.filter((g) => g.isPaid).length;
+        const total = l.groupPayments.length;
+        return paidCount === total
+          ? <span className="text-[10px] opacity-90">✓ {paidCount}/{total}</span>
+          : <span className="text-[10px] opacity-70">{paidCount}/{total} paid</span>;
+      }
+      return null;
+    })();
+
     return (
-      <div className="flex flex-col h-full min-w-0 overflow-hidden gap-0.5">
-        <span className="font-semibold text-xs leading-tight truncate shrink-0">{l.title}</span>
-        <span className="text-[10px] opacity-80 truncate shrink-0">{assigneeLabel(l)}</span>
-        <div className="flex items-center gap-1 mt-auto shrink-0">
-          {l.zoomUrl && <span className="text-[10px] opacity-70">🔗</span>}
-          {l.studentId && (
-            l.isPaid
-              ? <span className="text-[10px] opacity-90">✓ paid</span>
-              : <span className="text-[10px] opacity-70">unpaid</span>
-          )}
-          {l.groupId && l.groupPayments && l.groupPayments.length > 0 && (() => {
-            const paidCount = l.groupPayments.filter((g) => g.isPaid).length;
-            const total = l.groupPayments.length;
-            return paidCount === total
-              ? <span className="text-[10px] opacity-90">✓ {paidCount}/{total}</span>
-              : <span className="text-[10px] opacity-70">{paidCount}/{total} paid</span>;
-          })()}
-        </div>
+      <div className="w-full h-full flex flex-col overflow-hidden" style={{ minWidth: 0 }}>
+        <p className="font-semibold text-xs leading-tight w-full overflow-hidden text-ellipsis whitespace-nowrap">
+          {l.title}
+        </p>
+        <p className="text-[10px] opacity-80 w-full overflow-hidden text-ellipsis whitespace-nowrap">
+          {assigneeLabel(l)}
+        </p>
+        {(l.zoomUrl || paidInfo) && (
+          <div className="flex items-center gap-1 mt-auto overflow-hidden">
+            {l.zoomUrl && <span className="text-[10px] opacity-70 shrink-0">🔗</span>}
+            {paidInfo}
+          </div>
+        )}
       </div>
     );
   }
@@ -315,9 +393,9 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
         .rbc-calendar { font-family: inherit; color: var(--ink); }
         .rbc-header { background: #f8f5f0; border-color: rgba(26,26,46,0.1); padding: 6px 0; font-size: 0.8rem; font-weight: 600; color: var(--ink); }
         .rbc-today { background-color: rgba(233,69,96,0.05) !important; }
-        .rbc-event { background-color: var(--accent) !important; border: none !important; border-radius: 6px !important; padding: 6px 10px !important; min-width: 0; }
-        .rbc-event .rbc-event-content { min-width: 0; overflow: hidden; }
-        .rbc-event.rbc-selected { background-color: #c73050 !important; }
+        .rbc-event { border: none !important; border-radius: 6px !important; padding: 4px 8px !important; min-width: 0; overflow: hidden; }
+        .rbc-event .rbc-event-content { width: 100%; min-width: 0; overflow: hidden; display: flex; flex-direction: column; height: 100%; }
+        .rbc-event.rbc-selected { filter: brightness(0.85); }
         .rbc-slot-selection { background: rgba(233,69,96,0.15) !important; }
         .rbc-time-slot { border-color: rgba(26,26,46,0.05); }
         .rbc-timeslot-group { border-color: rgba(26,26,46,0.1); }
@@ -357,6 +435,7 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
             onSelectSlot={openCreateModal}
             onSelectEvent={openEditModal}
             components={{ event: EventComponent }}
+            eventPropGetter={eventPropGetter}
             step={30}
             timeslots={2}
             scrollToTime={new Date(1970, 1, 1, 8, 0, 0)}
@@ -455,6 +534,35 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
                 </div>
               </div>
 
+              {/* Event colour — shown when student or group is selected */}
+              {(form.studentId || form.groupId) && (() => {
+                const key = form.studentId ? `student:${form.studentId}` : `group:${form.groupId}`;
+                const currentColor = getEventColor(key);
+                return (
+                  <div>
+                    <label className="block text-xs font-medium text-ink/60 mb-1.5">Event colour</label>
+                    <div className="flex flex-wrap gap-2">
+                      {COLOR_PALETTE.map((c, i) => (
+                        <button
+                          key={c}
+                          type="button"
+                          title={COLOR_PALETTE_LABELS[i]}
+                          onClick={() => setEntityColor(key, c)}
+                          className="w-6 h-6 rounded-full transition-all hover:scale-110 focus:outline-none"
+                          style={{
+                            backgroundColor: c,
+                            boxShadow: currentColor === c
+                              ? `0 0 0 2px #fff, 0 0 0 4px ${c}`
+                              : undefined,
+                            transform: currentColor === c ? "scale(1.15)" : undefined,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Repeat section — only for new lessons */}
               {!editingId && (
                 <div className="rounded-lg border border-ink/10 bg-ink/[0.02] p-3 space-y-2.5">
@@ -535,7 +643,7 @@ export function ScheduleEditor({ students, groups }: ScheduleEditorProps) {
               </div>
             </div>
 
-            {editingId && (() => {
+            {canManagePayments && editingId && (() => {
               const lesson = lessons.find((l) => l.id === editingId);
               if (!lesson?.studentId && !lesson?.groupId) return null;
 
