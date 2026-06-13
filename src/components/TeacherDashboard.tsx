@@ -1038,7 +1038,7 @@ function LessonPaidToggle({
   useEffect(() => {
     if (!selectedStudent) { setLessons([]); return; }
     setLoadingLessons(true);
-    fetch("/api/schedule")
+    fetch("/api/schedule?view=teacher")
       .then((r) => r.json())
       .then((data) => {
         const filtered = Array.isArray(data)
@@ -1053,7 +1053,7 @@ function LessonPaidToggle({
     setTogglingId(lessonId);
     await onToggle(lessonId, isPaid);
     // Refresh lesson list
-    const res = await fetch("/api/schedule");
+    const res = await fetch("/api/schedule?view=teacher");
     const data = await res.json();
     const filtered = Array.isArray(data)
       ? data.filter((l: { studentId: string | null }) => l.studentId === selectedStudent)

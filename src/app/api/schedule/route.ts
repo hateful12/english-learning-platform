@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isTeacherLoggedIn, getStudentId } from "@/lib/auth";
+import { getStudentId, getTeacherSession, teacherCanAccessStudent } from "@/lib/auth";
 import { randomUUID } from "crypto";
 
 type LessonRow = {
@@ -60,26 +60,58 @@ function formatLesson(
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const teacher = await isTeacherLoggedIn();
+    // ── Session routing ──────────────────────────────────────────────────────
+    // The teacher dashboard explicitly sends ?view=teacher. Anything else
+    // (including a student browser that happens to also carry a stale teacher
+    // cookie) is treated as a student request so that students never see other
+    // students' schedules.
+    const url = new URL(request.url);
+    const wantTeacherView = url.searchParams.get("view") === "teacher";
+
+    const teacher = wantTeacherView ? await getTeacherSession() : null;
 
     if (teacher) {
-      const rows = await prisma.$queryRaw<LessonRow[]>`
-        SELECT
-          sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
-          sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
-          NULL AS glp_isPaid,
-          s.id    AS s_id,
-          s.email AS s_email,
-          s.name  AS s_name,
-          g.id    AS g_id,
-          g.name  AS g_name
-        FROM "ScheduledLesson" sl
-        LEFT JOIN "Student" s ON s.id = sl.studentId
-        LEFT JOIN "Group"   g ON g.id = sl.groupId
-        ORDER BY sl.startAt ASC
-      `;
+      const rows = teacher.isSuperAdmin
+        ? await prisma.$queryRaw<LessonRow[]>`
+            SELECT
+              sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
+              sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
+              NULL AS glp_isPaid,
+              s.id    AS s_id,
+              s.email AS s_email,
+              s.name  AS s_name,
+              g.id    AS g_id,
+              g.name  AS g_name
+            FROM "ScheduledLesson" sl
+            LEFT JOIN "Student" s ON s.id = sl.studentId
+            LEFT JOIN "Group"   g ON g.id = sl.groupId
+            ORDER BY sl.startAt ASC
+          `
+        : await prisma.$queryRaw<LessonRow[]>`
+            SELECT
+              sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
+              sl.studentId, sl.groupId, 0 AS isPaid, sl.createdAt,
+              NULL AS glp_isPaid,
+              s.id    AS s_id,
+              s.email AS s_email,
+              s.name  AS s_name,
+              g.id    AS g_id,
+              g.name  AS g_name
+            FROM "ScheduledLesson" sl
+            LEFT JOIN "Student" s ON s.id = sl.studentId
+            LEFT JOIN "Group"   g ON g.id = sl.groupId
+            WHERE s.teacherId = ${teacher.id}
+               OR g.teacherId = ${teacher.id}
+               OR EXISTS (
+                 SELECT 1
+                 FROM "StudentGroup" sg2
+                 JOIN "Student" s2 ON s2.id = sg2.studentId
+                 WHERE sg2.groupId = sl.groupId AND s2.teacherId = ${teacher.id}
+               )
+            ORDER BY sl.startAt ASC
+          `;
 
       // Fetch all group members for groups that have lessons
       const groupIds = Array.from(new Set(rows.filter((r) => r.groupId).map((r) => r.groupId as string)));
@@ -87,13 +119,24 @@ export async function GET() {
       let allGroupMembers: MemberRow[] = [];
       if (groupIds.length > 0) {
         const placeholders = groupIds.map(() => "?").join(",");
-        allGroupMembers = await prisma.$queryRawUnsafe<MemberRow[]>(
-          `SELECT sg.groupId, sg.studentId, s.name AS studentName, s.email AS studentEmail
-           FROM "StudentGroup" sg
-           JOIN "Student" s ON s.id = sg.studentId
-           WHERE sg.groupId IN (${placeholders})`,
-          ...groupIds
-        );
+        if (teacher.isSuperAdmin) {
+          allGroupMembers = await prisma.$queryRawUnsafe<MemberRow[]>(
+            `SELECT sg.groupId, sg.studentId, s.name AS studentName, s.email AS studentEmail
+             FROM "StudentGroup" sg
+             JOIN "Student" s ON s.id = sg.studentId
+             WHERE sg.groupId IN (${placeholders})`,
+            ...groupIds
+          );
+        } else {
+          allGroupMembers = await prisma.$queryRawUnsafe<MemberRow[]>(
+            `SELECT sg.groupId, sg.studentId, s.name AS studentName, s.email AS studentEmail
+             FROM "StudentGroup" sg
+             JOIN "Student" s ON s.id = sg.studentId
+             WHERE sg.groupId IN (${placeholders}) AND s.teacherId = ?`,
+            ...groupIds,
+            teacher.id
+          );
+        }
       }
       // Index members by groupId
       const membersByGroup = new Map<string, MemberRow[]>();
@@ -105,7 +148,7 @@ export async function GET() {
       // Fetch GroupLessonPayment records for all group lessons
       const groupLessonIds = rows.filter((r) => r.groupId).map((r) => r.id);
       let groupPaymentRows: GroupPaymentRow[] = [];
-      if (groupLessonIds.length > 0) {
+      if (teacher.isSuperAdmin && groupLessonIds.length > 0) {
         const placeholders = groupLessonIds.map(() => "?").join(",");
         groupPaymentRows = await prisma.$queryRawUnsafe<GroupPaymentRow[]>(
           `SELECT glp.lessonId, glp.studentId, glp.isPaid, glp.paymentId,
@@ -126,6 +169,7 @@ export async function GET() {
       return NextResponse.json(
         rows.map((r) => {
           if (!r.groupId) return formatLesson(r, true);
+          if (!teacher.isSuperAdmin) return formatLesson(r, true);
           // Merge all group members with their payment status (default: unpaid)
           const members = membersByGroup.get(r.groupId) ?? [];
           const gp = members.map((m) => {
@@ -143,8 +187,58 @@ export async function GET() {
       );
     }
 
+    // No ?view=teacher — try student session first
     const studentId = await getStudentId();
-    if (!studentId) return NextResponse.json([], { status: 401 });
+
+    // Fallback: if no student session but a teacher session exists (e.g. teacher
+    // navigates to / without a student account), still return their teacher view
+    // rather than a 401.  This keeps backward-compat for any direct API usage.
+    if (!studentId) {
+      const fallbackTeacher = await getTeacherSession();
+      if (!fallbackTeacher) return NextResponse.json([], { status: 401 });
+
+      // Re-use the teacher path with the fallback session
+      const rows = fallbackTeacher.isSuperAdmin
+        ? await prisma.$queryRaw<LessonRow[]>`
+            SELECT
+              sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
+              sl.studentId, sl.groupId, sl.isPaid, sl.createdAt,
+              NULL AS glp_isPaid,
+              s.id    AS s_id,
+              s.email AS s_email,
+              s.name  AS s_name,
+              g.id    AS g_id,
+              g.name  AS g_name
+            FROM "ScheduledLesson" sl
+            LEFT JOIN "Student" s ON s.id = sl.studentId
+            LEFT JOIN "Group"   g ON g.id = sl.groupId
+            ORDER BY sl.startAt ASC
+          `
+        : await prisma.$queryRaw<LessonRow[]>`
+            SELECT
+              sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
+              sl.studentId, sl.groupId, 0 AS isPaid, sl.createdAt,
+              NULL AS glp_isPaid,
+              s.id    AS s_id,
+              s.email AS s_email,
+              s.name  AS s_name,
+              g.id    AS g_id,
+              g.name  AS g_name
+            FROM "ScheduledLesson" sl
+            LEFT JOIN "Student" s ON s.id = sl.studentId
+            LEFT JOIN "Group"   g ON g.id = sl.groupId
+            WHERE s.teacherId = ${fallbackTeacher.id}
+               OR g.teacherId = ${fallbackTeacher.id}
+               OR EXISTS (
+                 SELECT 1
+                 FROM "StudentGroup" sg2
+                 JOIN "Student" s2 ON s2.id = sg2.studentId
+                 WHERE sg2.groupId = sl.groupId AND s2.teacherId = ${fallbackTeacher.id}
+               )
+            ORDER BY sl.startAt ASC
+          `;
+      return NextResponse.json(rows.map((r) => formatLesson(r, true)));
+    }
 
     const groupRows = await prisma.$queryRaw<{ groupId: string }[]>`
       SELECT groupId FROM "StudentGroup" WHERE studentId = ${studentId}
@@ -196,8 +290,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const loggedIn = await isTeacherLoggedIn();
-    if (!loggedIn) {
+    const teacher = await getTeacherSession();
+    if (!teacher) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -224,6 +318,29 @@ export async function POST(request: NextRequest) {
     const sId = studentId && typeof studentId === "string" ? studentId : null;
     const gId = groupId && typeof groupId === "string" ? groupId : null;
 
+    if (sId && !(await teacherCanAccessStudent(teacher, sId))) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+    if (gId && !teacher.isSuperAdmin) {
+      const accessRows = await prisma.$queryRaw<Array<{ ok: number }>>`
+        SELECT COUNT(*) AS ok
+        FROM "Group" g
+        WHERE g.id = ${gId}
+          AND (
+            g.teacherId = ${teacher.id}
+            OR EXISTS (
+              SELECT 1
+              FROM "StudentGroup" sg
+              JOIN "Student" s ON s.id = sg.studentId
+              WHERE sg.groupId = g.id AND s.teacherId = ${teacher.id}
+            )
+          )
+      `;
+      if (Number(accessRows[0]?.ok ?? 0) === 0) {
+        return NextResponse.json({ error: "Group not found" }, { status: 404 });
+      }
+    }
+
     const baseStart = new Date(startAt as string);
     const occurrences = typeof repeatCount === "number" && repeatCount > 1 ? repeatCount : 1;
     const intervalDays = typeof repeatDays === "number" && repeatDays > 0 ? repeatDays : 0;
@@ -231,9 +348,16 @@ export async function POST(request: NextRequest) {
     // If this is a group lesson, get the group members to pre-create GroupLessonPayment rows
     let groupMemberIds: string[] = [];
     if (gId) {
-      const members = await prisma.$queryRaw<{ studentId: string }[]>`
-        SELECT studentId FROM "StudentGroup" WHERE groupId = ${gId}
-      `;
+      const members = teacher.isSuperAdmin
+        ? await prisma.$queryRaw<{ studentId: string }[]>`
+            SELECT studentId FROM "StudentGroup" WHERE groupId = ${gId}
+          `
+        : await prisma.$queryRaw<{ studentId: string }[]>`
+            SELECT sg.studentId
+            FROM "StudentGroup" sg
+            JOIN "Student" s ON s.id = sg.studentId
+            WHERE sg.groupId = ${gId} AND s.teacherId = ${teacher.id}
+          `;
       groupMemberIds = members.map((m) => m.studentId);
     }
 
@@ -274,7 +398,7 @@ export async function POST(request: NextRequest) {
         WHERE sl.id = ${id}
       `;
       if (rows[0]) {
-        const gpRows = groupMemberIds.length > 0
+        const gpRows = teacher.isSuperAdmin && groupMemberIds.length > 0
           ? await prisma.$queryRaw<GroupPaymentRow[]>`
               SELECT glp.lessonId, glp.studentId, glp.isPaid, glp.paymentId,
                      s.name AS studentName, s.email AS studentEmail
@@ -290,7 +414,7 @@ export async function POST(request: NextRequest) {
           isPaid: Boolean(g.isPaid),
           paymentId: g.paymentId,
         }));
-        created.push(formatLesson(rows[0], true, gId ? gp : undefined));
+        created.push(formatLesson(rows[0], true, teacher.isSuperAdmin && gId ? gp : undefined));
       }
     }
 

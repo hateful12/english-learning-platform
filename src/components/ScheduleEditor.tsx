@@ -169,7 +169,7 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
 
   const fetchLessons = useCallback(async () => {
     try {
-      const res = await fetch("/api/schedule");
+      const res = await fetch("/api/schedule?view=teacher");
       if (res.ok) {
         const data = await res.json();
         setLessons(Array.isArray(data) ? data : []);
