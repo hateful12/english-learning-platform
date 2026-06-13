@@ -565,16 +565,20 @@ function HomeworkItem({
   submittingId,
   onSubmit,
   onDelete,
+  defaultOpen,
 }: {
   item: Homework;
   readOnly?: boolean;
   submittingId: string | null;
   onSubmit: (id: string, response: string, attachments: HomeworkAttachment[]) => Promise<boolean>;
   onDelete?: (id: string) => Promise<void>;
+  defaultOpen?: boolean;
 }) {
   const [deleting, setDeleting] = useState(false);
   const attachments = parseAttachments(item);
   const myResponse = item.responses?.[0];
+  const hasSubmission = !!(myResponse?.response || parseStudentResponseAttachments(myResponse?.studentResponseAttachments).length > 0);
+  const hasFeedback = !!(myResponse?.teacherFeedback || (myResponse?.teacherFeedbackAttachments && myResponse.teacherFeedbackAttachments !== "[]"));
 
   async function handleDelete() {
     if (!onDelete) return;
@@ -586,32 +590,8 @@ function HomeworkItem({
     }
   }
 
-  return (
-    <li id={`student-hw-${item.id}`} className="border-b border-ink/5 pb-5 last:border-0 last:pb-0 scroll-mt-24">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/40">Assignment</p>
-          <h3 className="font-semibold text-ink leading-snug">{item.title}</h3>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-ink/40" title="Assigned">
-            Assigned {new Date(item.createdAt).toLocaleDateString()}
-          </span>
-          {readOnly && onDelete && (
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-              title="Remove from archive"
-              className="rounded p-1 text-ink/30 hover:text-accent hover:bg-accent/10 transition-colors disabled:opacity-40"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
-          )}
-        </div>
-      </div>
+  const body = (
+    <>
       {item.description && (
         <div className="mt-2 rounded-lg border border-ink/10 bg-ink/[0.04] px-3 py-2">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-ink/45">Instructions</p>
@@ -690,6 +670,70 @@ function HomeworkItem({
           feedbackAt={myResponse.feedbackAt ?? null}
         />
       )}
+    </>
+  );
+
+  if (defaultOpen !== undefined) {
+    return (
+      <li id={`student-hw-${item.id}`} className="scroll-mt-24 rounded-lg border border-ink/10 bg-white overflow-hidden">
+        <details open={defaultOpen} className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 hover:bg-ink/[0.02] transition-colors [&::-webkit-details-marker]:hidden">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="shrink-0 text-xs text-ink/30 transition-transform group-open:rotate-90" aria-hidden>▶</span>
+              <div className="min-w-0">
+                <h3 className="font-semibold text-ink leading-snug truncate">{item.title}</h3>
+                <p className="text-[11px] text-ink/40 mt-0.5">
+                  Assigned {new Date(item.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {hasFeedback && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent font-medium">💬 Feedback</span>
+              )}
+              {hasSubmission && !hasFeedback && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-medium">✓ Sent</span>
+              )}
+              {!hasSubmission && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">Pending</span>
+              )}
+            </div>
+          </summary>
+          <div className="border-t border-ink/5 px-4 pb-4 pt-3">
+            {body}
+          </div>
+        </details>
+      </li>
+    );
+  }
+
+  return (
+    <li id={`student-hw-${item.id}`} className="border-b border-ink/5 pb-5 last:border-0 last:pb-0 scroll-mt-24">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ink/40">Assignment</p>
+          <h3 className="font-semibold text-ink leading-snug">{item.title}</h3>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-ink/40" title="Assigned">
+            Assigned {new Date(item.createdAt).toLocaleDateString()}
+          </span>
+          {readOnly && onDelete && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              title="Remove from archive"
+              className="rounded p-1 text-ink/30 hover:text-accent hover:bg-accent/10 transition-colors disabled:opacity-40"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+      {body}
     </li>
   );
 }
@@ -743,9 +787,15 @@ function HomeworkTab({
         <p className="mb-6 text-sm text-ink/50">No active homework right now.</p>
       )}
       {active.length > 0 && (
-        <ul className="space-y-5">
-          {active.map((item) => (
-            <HomeworkItem key={item.id} item={item} submittingId={submittingId} onSubmit={onSubmit} />
+        <ul className={active.length > 1 ? "space-y-2" : "space-y-5"}>
+          {active.map((item, index) => (
+            <HomeworkItem
+              key={item.id}
+              item={item}
+              submittingId={submittingId}
+              onSubmit={onSubmit}
+              defaultOpen={active.length > 1 ? index === 0 : undefined}
+            />
           ))}
         </ul>
       )}
