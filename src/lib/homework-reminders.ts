@@ -297,6 +297,84 @@ export async function notifyHomeworkById(
   return { ok: true, ...stats };
 }
 
+/** Email student when the teacher leaves feedback on their homework response. */
+export async function sendFeedbackNotification(args: {
+  responseId: string;
+  teacherFeedback: string;
+}): Promise<void> {
+  try {
+    const response = await prisma.homeworkResponse.findUnique({
+      where: { id: args.responseId },
+      select: {
+        student: { select: { email: true, name: true } },
+        homework: { select: { id: true, title: true } },
+        teacherFeedbackAttachments: true,
+      },
+    });
+    if (!response) return;
+
+    const baseUrl = await getAppBaseUrl();
+    const studentName = response.student.name || "there";
+    const hwTitle = response.homework.title;
+    const feedback = args.teacherFeedback.trim();
+    const PREVIEW_CHARS = 1200;
+    const preview = feedback.length > PREVIEW_CHARS ? `${feedback.slice(0, PREVIEW_CHARS)}…` : feedback;
+
+    const atts = parseHomeworkAttachmentsJson(response.teacherFeedbackAttachments ?? "[]");
+    const abs = (u: string) => absoluteAssetUrl(baseUrl, u);
+    let attachmentsBlock = "";
+    if (atts.length > 0) {
+      const parts = atts.map((a) => {
+        const url = abs(a.url || "");
+        const name = escapeHtml(a.name || "attachment");
+        if (!url) return `<p>📎 ${name}</p>`;
+        if (a.type === "image") {
+          return `<p style="margin:12px 0"><a href="${escapeHtml(url)}"><img src="${escapeHtml(url)}" alt="" width="560" style="max-width:100%;height:auto;border-radius:8px;border:1px solid #e5e7eb"/></a></p>`;
+        }
+        return `<p>📎 <a href="${escapeHtml(url)}">${name}</a></p>`;
+      });
+      attachmentsBlock = `<hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0"/>
+        <p style="font-size:13px;color:#666;margin:0 0 8px">Attachments from teacher (${atts.length})</p>
+        ${parts.join("")}`;
+    }
+
+    const openHw = baseUrl ? homeworkTabDeepLink(baseUrl, response.homework.id) : "";
+    const signIn = baseUrl ? loginThenHomeworkLink(baseUrl, response.homework.id) : "";
+    const actions = openHw
+      ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:20px 0"><tr>
+          <td><a href="${escapeHtml(openHw)}" style="display:inline-block;padding:12px 20px;background:#0d9488;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Open homework</a></td>
+        </tr></table>
+        <p style="font-size:12px;color:#888;margin:0 0 8px">Direct link:<br/>
+        <a href="${escapeHtml(openHw)}" style="word-break:break-all;color:#0d9488">${escapeHtml(openHw)}</a></p>
+        <p style="font-size:12px;color:#888;margin:0">Not signed in? <a href="${escapeHtml(signIn)}" style="color:#0d9488">Log in</a></p>`
+      : "";
+
+    const html = `
+      <p>Hi ${escapeHtml(studentName)},</p>
+      <p>Your teacher reviewed your work on <strong>${escapeHtml(hwTitle)}</strong> and left feedback.</p>
+      ${preview ? `<div style="margin-top:14px;padding:14px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+        <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">Teacher's feedback</p>
+        <p style="margin:0;font-size:14px;line-height:1.55;color:#374151;white-space:pre-wrap">${escapeHtml(preview).replace(/\n/g, "<br/>")}</p>
+      </div>` : ""}
+      ${attachmentsBlock}
+      ${actions}
+      <p style="margin-top:24px">— Your teacher</p>
+    `.trim();
+
+    const result = await sendTransactionalEmail({
+      to: response.student.email,
+      subject: `Feedback on your homework: ${hwTitle}`,
+      html,
+    });
+
+    if (!result.ok) {
+      console.error("[feedback-notify-email] failed", args.responseId, result.error);
+    }
+  } catch (e) {
+    console.error("[feedback-notify-email] unexpected error", args.responseId, e);
+  }
+}
+
 export async function sendDueHomeworkReminders(limit = 30): Promise<{ sent: number; failed: number }> {
   const baseUrl = await getAppBaseUrl();
   const tz = getHomeworkReminderTimezone();

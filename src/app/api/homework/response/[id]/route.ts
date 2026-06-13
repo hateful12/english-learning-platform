@@ -1,17 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { isTeacherLoggedIn } from "@/lib/auth";
+import { getTeacherSession } from "@/lib/auth";
 import { normalizeAttachmentPayloadList } from "@/lib/attachment-url";
+import { sendFeedbackNotification } from "@/lib/homework-reminders";
+
+export const runtime = "nodejs";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const loggedIn = await isTeacherLoggedIn();
-  if (!loggedIn) {
+  const teacher = await getTeacherSession();
+  if (!teacher) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id } = await params;
+  if (!teacher.isSuperAdmin) {
+    const rows = await prisma.$queryRaw<Array<{ ok: number }>>`
+      SELECT COUNT(*) AS ok
+      FROM "HomeworkResponse" hr
+      JOIN "Student" s ON s.id = hr.studentId
+      WHERE hr.id = ${id} AND s.teacherId = ${teacher.id}
+    `;
+    if (Number(rows[0]?.ok ?? 0) === 0) {
+      return NextResponse.json({ error: "Response not found" }, { status: 404 });
+    }
+  }
   const body = await request.json();
 
   const attachmentsJson =
@@ -41,6 +55,15 @@ export async function PATCH(
       feedbackAt: new Date(),
     },
   });
+
+  // Fire-and-forget — don't block the response on email delivery
+  const feedbackText =
+    body.teacherFeedback !== undefined ? String(body.teacherFeedback) : "";
+  if (feedbackText.trim()) {
+    sendFeedbackNotification({ responseId: id, teacherFeedback: feedbackText }).catch(
+      (e) => console.error("[feedback-notify] fire-and-forget error", e)
+    );
+  }
 
   return NextResponse.json(updated);
 }
