@@ -167,7 +167,23 @@ export async function POST(request: NextRequest) {
     return new NextResponse("ok", { status: 200 });
   }
 
-  // ── 2. Match by unique amount (PaymentIntent) ─────────────────────────────
+  // ── 2. Match by fixed paymentCents (amount % 100) ────────────────────────
+  // Each student has a permanent identifier: 1-99 kopecks appended to their transfer.
+  // E.g. student with paymentCents=3 always sends ₴500.03, ₴1000.03, etc.
+  const centsRemainder = item.amount % 100;
+  if (centsRemainder > 0) {
+    const centsStudent = await prisma.student.findFirst({
+      where: { paymentCents: centsRemainder },
+      select: { id: true },
+    });
+    if (centsStudent) {
+      await creditStudent(centsStudent.id, item.amount, item.id, comment, receivedAt);
+      console.log(`[mono webhook] matched by paymentCents=${centsRemainder} → student=${centsStudent.id}`);
+      return new NextResponse("ok", { status: 200 });
+    }
+  }
+
+  // ── 3. Match by PaymentIntent unique amount (fallback) ────────────────────
   const now = new Date();
   const intents = await prisma.paymentIntent.findMany({
     where: { uniqueAmount: item.amount, status: "pending", expiresAt: { gte: now } },
@@ -180,12 +196,11 @@ export async function POST(request: NextRequest) {
       where: { id: intent.id },
       data: { status: "matched", paymentId: payment.id },
     });
-    console.log(`[mono webhook] matched by uniqueAmount=${item.amount} → intent=${intent.id}`);
+    console.log(`[mono webhook] matched by PaymentIntent uniqueAmount=${item.amount} → intent=${intent.id}`);
     return new NextResponse("ok", { status: 200 });
   }
 
   if (intents.length > 1) {
-    // Collision — flag all for manual review
     await prisma.paymentIntent.updateMany({
       where: { id: { in: intents.map((i) => i.id) } },
       data: { status: "manual_review" },
@@ -194,7 +209,7 @@ export async function POST(request: NextRequest) {
     return new NextResponse("ok", { status: 200 });
   }
 
-  // ── 3. No match ───────────────────────────────────────────────────────────
+  // ── 4. No match ───────────────────────────────────────────────────────────
   console.warn(
     `[mono webhook] unmatched monoId=${item.id} amount=${item.amount / 100}₴`,
     `comment="${item.comment ?? ""}" description="${item.description ?? ""}"`,

@@ -853,30 +853,28 @@ function HomeworkTab({
 }
 
 
-type PaymentIntent = {
-  id: string;
-  requestedAmount: number;
-  uniqueAmount: number;
-  expiresAt: string;
-  card?: string | null;
-};
+function MonoLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 60 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <rect width="60" height="24" rx="6" fill="#1B1F3B"/>
+      <text x="50%" y="17" textAnchor="middle" fill="white" fontSize="13" fontWeight="700" fontFamily="Arial,sans-serif">mono</text>
+    </svg>
+  );
+}
 
-function useCountdown(expiresAt: string | null): string {
-  const [remaining, setRemaining] = useState("");
-  useEffect(() => {
-    if (!expiresAt) { setRemaining(""); return; }
-    const tick = () => {
-      const diff = new Date(expiresAt).getTime() - Date.now();
-      if (diff <= 0) { setRemaining("Expired"); return; }
-      const m = Math.floor(diff / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setRemaining(`${m}:${s.toString().padStart(2, "0")}`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [expiresAt]);
-  return remaining;
+function CopyButton({ text, label = "Copy", copiedLabel = "Copied!" }: { text: string; label?: string; copiedLabel?: string }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+  return (
+    <button type="button" onClick={copy}
+      className="shrink-0 rounded-lg border border-ink/20 bg-white px-3 py-1.5 text-xs font-medium text-ink/60 hover:bg-ink/5 transition-colors">
+      {copied ? copiedLabel : label}
+    </button>
+  );
 }
 
 function PaymentsTab({
@@ -894,217 +892,203 @@ function PaymentsTab({
   onLessonsChange: (n: number) => void;
   onCopy: (code: string) => void;
 }) {
-  const [intent, setIntent] = useState<PaymentIntent | null>(null);
-  const [intentLoading, setIntentLoading] = useState(true);
-  const [intentCreating, setIntentCreating] = useState(false);
-  const [intentError, setIntentError] = useState<string | null>(null);
-  const [intentCopied, setIntentCopied] = useState(false);
-  const countdown = useCountdown(intent?.expiresAt ?? null);
+  const [flow, setFlow] = useState<"mono" | "other" | null>(null);
+  const [studentCents, setStudentCents] = useState<number | null>(null);
+  const [centsLoading, setCentsLoading] = useState(false);
+  const [centsError, setCentsError] = useState<string | null>(null);
+  const [amountCopied, setAmountCopied] = useState(false);
 
-  // Load existing active intent on mount
+  const card = publicSettings?.monobankCard;
+  const pricePerLesson = publicSettings?.lessonPrice ?? 0; // in UAH
+
+  // When "other bank" flow is selected, fetch the student's fixed cents
   useEffect(() => {
-    fetch("/api/payment-intent")
+    if (flow !== "other" || studentCents !== null) return;
+    setCentsLoading(true);
+    setCentsError(null);
+    fetch("/api/student/payment-cents")
       .then((r) => r.json())
-      .then((data) => setIntent(data))
-      .catch(() => {})
-      .finally(() => setIntentLoading(false));
-  }, []);
+      .then((d) => {
+        if (d.cents) setStudentCents(d.cents);
+        else setCentsError(d.error ?? "Error loading identifier");
+      })
+      .catch(() => setCentsError("Network error"))
+      .finally(() => setCentsLoading(false));
+  }, [flow, studentCents]);
 
-  async function createIntent() {
-    setIntentCreating(true);
-    setIntentError(null);
-    try {
-      const res = await fetch("/api/payment-intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lessonsCount: lessonsToPay }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setIntentError(data.error ?? "Error"); return; }
-      setIntent(data as PaymentIntent);
-    } catch {
-      setIntentError("Network error");
-    } finally {
-      setIntentCreating(false);
-    }
-  }
-
-  async function cancelIntent() {
-    await fetch("/api/payment-intent", { method: "DELETE" });
-    setIntent(null);
-  }
+  // Exact amount to transfer: (price * lessons) UAH + cents kopecks
+  const exactKopecks = studentCents != null
+    ? (pricePerLesson * lessonsToPay * 100) + studentCents
+    : null;
 
   function copyAmount() {
-    if (!intent) return;
-    const text = (intent.uniqueAmount / 100).toFixed(2);
-    navigator.clipboard.writeText(text).catch(() => {});
-    setIntentCopied(true);
-    setTimeout(() => setIntentCopied(false), 2000);
+    if (!exactKopecks) return;
+    navigator.clipboard.writeText((exactKopecks / 100).toFixed(2)).catch(() => {});
+    setAmountCopied(true);
+    setTimeout(() => setAmountCopied(false), 2000);
   }
 
-  const isExpired = intent && countdown === "Expired";
+  const hasPaymentSetup = !!(pricePerLesson || studentInfo?.paymentCode || card);
+
+  if (!hasPaymentSetup) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <span className="text-4xl mb-3">💳</span>
+        <p className="text-ink/50">Payment info not set up yet.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
-      {/* Lesson price calculator */}
-      {publicSettings?.lessonPrice && (
+      {/* Lesson counter */}
+      {pricePerLesson > 0 && (
         <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-5 space-y-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Price per lesson</p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-ink">₴{publicSettings.lessonPrice}</span>
-            </div>
+            <span className="text-3xl font-bold text-ink">₴{pricePerLesson}</span>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <label className="text-sm text-ink/70 shrink-0">Pay for</label>
             <div className="flex items-center border border-ink/20 rounded-lg overflow-hidden">
-              <button
-                type="button"
-                onClick={() => onLessonsChange(Math.max(1, lessonsToPay - 1))}
-                className="px-3 py-2 text-ink/60 hover:bg-ink/5 text-lg font-medium"
-              >−</button>
-              <span className="px-4 py-2 font-semibold text-ink min-w-[3rem] text-center">
-                {lessonsToPay}
-              </span>
-              <button
-                type="button"
-                onClick={() => onLessonsChange(lessonsToPay + 1)}
-                className="px-3 py-2 text-ink/60 hover:bg-ink/5 text-lg font-medium"
-              >+</button>
+              <button type="button" onClick={() => onLessonsChange(Math.max(1, lessonsToPay - 1))}
+                className="px-3 py-2 text-ink/60 hover:bg-ink/5 text-lg font-medium">−</button>
+              <span className="px-4 py-2 font-semibold text-ink min-w-[3rem] text-center">{lessonsToPay}</span>
+              <button type="button" onClick={() => onLessonsChange(lessonsToPay + 1)}
+                className="px-3 py-2 text-ink/60 hover:bg-ink/5 text-lg font-medium">+</button>
             </div>
-            <span className="text-sm text-ink/70 shrink-0">
-              lesson{lessonsToPay > 1 ? "s" : ""} =
-            </span>
-            <span className="font-bold text-accent text-2xl">
-              ₴{(publicSettings.lessonPrice * lessonsToPay).toLocaleString()}
-            </span>
+            <span className="text-sm text-ink/70 shrink-0">lesson{lessonsToPay > 1 ? "s" : ""} =</span>
+            <span className="font-bold text-accent text-2xl">₴{(pricePerLesson * lessonsToPay).toLocaleString()}</span>
           </div>
         </div>
       )}
 
-      {/* ── ANY-BANK PAYMENT FLOW ─────────────────────────────────────────── */}
-      {!intentLoading && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-5 space-y-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-blue-600/70 mb-0.5">
-              Pay from any bank
-            </p>
-            <p className="text-sm text-ink/60">
-              PrivatBank, Oschadbank, cash — transfer an exact unique amount and the system matches it automatically. No comment code needed.
-            </p>
-          </div>
+      {/* ── Flow selector ──────────────────────────────────────────────────── */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-3">Choose how to pay</p>
+        <div className="grid grid-cols-2 gap-3">
+          {/* Monobank */}
+          <button
+            type="button"
+            onClick={() => setFlow("mono")}
+            className={`rounded-xl border-2 p-4 text-left transition-all ${
+              flow === "mono"
+                ? "border-[#1B1F3B] bg-[#1B1F3B]/5 shadow-sm"
+                : "border-ink/10 bg-white hover:border-ink/30"
+            }`}
+          >
+            <MonoLogo className="h-6 w-auto mb-3" />
+            <p className="font-semibold text-sm text-ink">Monobank</p>
+            <p className="text-xs text-ink/50 mt-0.5">Code in comment</p>
+          </button>
 
-          {(!intent || isExpired) ? (
-            <button
-              type="button"
-              onClick={createIntent}
-              disabled={intentCreating}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              {intentCreating ? "Generating…" : `Generate exact amount for ${lessonsToPay} lesson${lessonsToPay > 1 ? "s" : ""}`}
-            </button>
-          ) : (
-            <div className="space-y-3">
-              {/* Unique amount to transfer */}
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">
-                  Transfer EXACTLY this amount
-                </p>
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-3xl font-bold text-blue-700 select-all">
-                    ₴{(intent.uniqueAmount / 100).toFixed(2)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={copyAmount}
-                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 transition-colors"
-                  >
-                    {intentCopied ? "Copied!" : "Copy"}
-                  </button>
-                </div>
-                <p className="text-xs text-ink/40 mt-1">
-                  (includes {intent.uniqueAmount - intent.requestedAmount} kopecks for unique identification)
-                </p>
-              </div>
+          {/* Any bank */}
+          <button
+            type="button"
+            onClick={() => setFlow("other")}
+            className={`rounded-xl border-2 p-4 text-left transition-all ${
+              flow === "other"
+                ? "border-blue-500 bg-blue-50 shadow-sm"
+                : "border-ink/10 bg-white hover:border-ink/30"
+            }`}
+          >
+            <div className="text-2xl mb-2">🏦</div>
+            <p className="font-semibold text-sm text-ink">PrivatBank / other</p>
+            <p className="text-xs text-ink/50 mt-0.5">No comment needed</p>
+          </button>
+        </div>
+      </div>
 
-              {/* Card to send to */}
-              {(intent.card ?? publicSettings?.monobankCard) && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">To card</p>
-                  <span className="font-mono text-base font-semibold text-ink tracking-wider">
-                    {intent.card ?? publicSettings?.monobankCard}
-                  </span>
-                </div>
-              )}
-
-              {/* Countdown */}
-              <div className="flex items-center justify-between gap-4 pt-1">
-                <p className="text-xs text-ink/50">
-                  ⏱ Expires in{" "}
-                  <span className={`font-semibold ${countdown === "Expired" ? "text-red-600" : "text-ink/70"}`}>
-                    {countdown}
-                  </span>
-                  {" "}— the system checks automatically after you transfer.
-                </p>
-                <button
-                  type="button"
-                  onClick={cancelIntent}
-                  className="shrink-0 text-xs text-ink/40 hover:text-red-500 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
+      {/* ── Monobank flow ──────────────────────────────────────────────────── */}
+      {flow === "mono" && (
+        <div className="rounded-xl border border-[#1B1F3B]/20 bg-[#1B1F3B]/[0.03] p-5 space-y-4">
+          {studentInfo?.paymentCode && card && (
+            <div className="rounded-lg border border-ink/10 bg-ink/[0.02] p-3 text-sm text-ink/70 leading-relaxed">
+              Перекажіть на картку нижче. У коментарі до переказу впишіть ваш код.
             </div>
           )}
 
-          {intentError && <p className="text-xs text-red-600">{intentError}</p>}
+          {/* Code */}
+          {studentInfo?.paymentCode && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Your payment code</p>
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-2xl font-bold tracking-widest text-accent select-all">
+                  {studentInfo.paymentCode}
+                </span>
+                <button type="button" onClick={() => onCopy(studentInfo!.paymentCode!)}
+                  className="shrink-0 rounded-lg border border-accent/30 bg-white px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 transition-colors">
+                  {copiedCode ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className="text-xs text-ink/40 mt-1">Paste this code in the transfer comment</p>
+            </div>
+          )}
+
+          {/* Card */}
+          {card && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Send to card</p>
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-lg font-semibold text-ink tracking-wider">{card}</span>
+                <CopyButton text={card} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── MONOBANK WITH CODE ────────────────────────────────────────────── */}
-      {/* Payment instructions */}
-      {studentInfo?.paymentCode && publicSettings?.monobankCard && (
-        <div className="rounded-xl border border-ink/10 bg-ink/[0.03] p-4 text-sm leading-relaxed">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink/45 mb-2">Оплата через Monobank з кодом</p>
-          <p lang="uk" className="text-ink/90">
-            Перекажіть оплату на картку — її номер вказано в блоці нижче. У коментарі до переказу впишіть лише ваш персональний код із рожевого блоку нижче.
+      {/* ── Other bank flow ────────────────────────────────────────────────── */}
+      {flow === "other" && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-5 space-y-4">
+          <p className="text-sm text-ink/60">
+            Transfer the exact amount below from <strong>any bank</strong> (PrivatBank, Oschadbank, cash wire…). The last kopecks are your permanent ID — no comment needed.
           </p>
-        </div>
-      )}
 
-      {/* Payment code */}
-      {studentInfo?.paymentCode && (
-        <div className="rounded-xl border border-accent/20 bg-accent/5 px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="font-mono text-2xl font-bold tracking-widest text-accent select-all">
-              {studentInfo.paymentCode}
-            </span>
-            <span className="text-xs text-ink/40 hidden sm:block">add to transfer comment</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => onCopy(studentInfo!.paymentCode!)}
-            className="shrink-0 rounded-lg border border-accent/30 bg-white px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
-          >
-            {copiedCode ? "Copied!" : "Copy"}
-          </button>
-        </div>
-      )}
+          {centsLoading && (
+            <p className="text-sm text-ink/40">Loading your payment identifier…</p>
+          )}
 
-      {/* Card / bank details */}
-      {publicSettings?.monobankCard && (
-        <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Send to card</p>
-          <span className="font-mono text-lg font-semibold text-ink tracking-wider">
-            {publicSettings.monobankCard}
-          </span>
-        </div>
-      )}
+          {centsError && (
+            <p className="text-sm text-red-600">{centsError}</p>
+          )}
 
-      {!publicSettings?.lessonPrice && !studentInfo?.paymentCode && !publicSettings?.monobankCard && (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <span className="text-4xl mb-3">💳</span>
-          <p className="text-ink/50">Payment info not set up yet.</p>
+          {!centsLoading && studentCents != null && exactKopecks != null && (
+            <>
+              {/* Exact amount */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Transfer EXACTLY</p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="font-mono text-3xl font-bold text-blue-700 select-all">
+                    ₴{(exactKopecks / 100).toFixed(2)}
+                  </span>
+                  <button type="button" onClick={copyAmount}
+                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 transition-colors">
+                    {amountCopied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+                <div className="mt-2 text-xs text-ink/50 space-y-0.5">
+                  <p>₴{(pricePerLesson * lessonsToPay).toFixed(2)} lesson fee + ₴0.{String(studentCents).padStart(2, "0")} your ID = <span className="font-semibold text-blue-700">₴{(exactKopecks / 100).toFixed(2)}</span></p>
+                  <p>Your ID kopecks are always <strong>₴0.{String(studentCents).padStart(2, "0")}</strong> — use the same suffix for any future payment.</p>
+                </div>
+              </div>
+
+              {/* Card */}
+              {card && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-2">Send to card</p>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-lg font-semibold text-ink tracking-wider">{card}</span>
+                    <CopyButton text={card} />
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-ink/40 pt-1">
+                The system matches the payment automatically — lessons are marked paid once the transfer arrives.
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>

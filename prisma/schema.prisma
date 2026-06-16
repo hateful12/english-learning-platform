@@ -13,6 +13,7 @@ model Student {
   name                String?
   passwordHash        String
   paymentCode         String                @unique @default(cuid())
+  paymentCents        Int?                  // 1-99, permanent unique ID kopecks for any-bank matching
   lessonPrice         Int?
   level               String?              // CEFR level set by teacher: "A1" "A2" "B1" "B2" "C1" "C2"
   teacherId           String?
