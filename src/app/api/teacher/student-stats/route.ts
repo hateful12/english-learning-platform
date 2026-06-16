@@ -59,7 +59,7 @@ export async function GET() {
   const overdueIndMap = new Map(overdueInd.map((r) => [r.studentId!, r._count.id]));
 
   // Group lesson counts (via GroupLessonPayment)
-  const allGroupIds = [...new Set(students.flatMap((s) => s.groups.map((g) => g.group.id)))];
+  const allGroupIds = Array.from(new Set(students.flatMap((s) => s.groups.map((g) => g.group.id))));
 
   const groupLessons = allGroupIds.length > 0
     ? await prisma.scheduledLesson.findMany({
