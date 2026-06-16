@@ -120,6 +120,26 @@ function TeacherFeedbackDisplay({
   );
 }
 
+const DRAFT_PREFIX = "hw-draft-";
+
+function loadDraft(id: string): { response: string; attachments: HomeworkAttachment[] } | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_PREFIX + id);
+    if (!raw) return null;
+    return JSON.parse(raw) as { response: string; attachments: HomeworkAttachment[] };
+  } catch { return null; }
+}
+
+function saveDraft(id: string, response: string, attachments: HomeworkAttachment[]) {
+  try {
+    localStorage.setItem(DRAFT_PREFIX + id, JSON.stringify({ response, attachments }));
+  } catch { /* ignore quota */ }
+}
+
+function clearDraft(id: string) {
+  try { localStorage.removeItem(DRAFT_PREFIX + id); } catch { /* ignore */ }
+}
+
 function HomeworkSubmit({
   homeworkId,
   initialResponse,
@@ -137,22 +157,54 @@ function HomeworkSubmit({
 }) {
   const hasSavedWork =
     initialResponse.trim().length > 0 || initialAttachments.length > 0;
+
+  // Restore from localStorage draft if there's no submitted response yet
+  const initDraft = !hasSavedWork ? loadDraft(homeworkId) : null;
+
   const [editingOpen, setEditingOpen] = useState(!hasSavedWork);
-  const [response, setResponse] = useState(initialResponse);
-  const [attachments, setAttachments] = useState<HomeworkAttachment[]>(initialAttachments);
+  const [response, setResponse] = useState(initDraft?.response ?? initialResponse);
+  const [attachments, setAttachments] = useState<HomeworkAttachment[]>(initDraft?.attachments ?? initialAttachments);
   const [uploading, setUploading] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Stable key for server-side initial data so re-renders with new array references
+  // don't accidentally reset the student's in-progress draft.
+  const initAttachKey = initialAttachments.map((a) => a.url).sort().join("|");
+
+  // Only sync from server when the actual submitted content changes (e.g. after a save).
   useEffect(() => {
-    setResponse(initialResponse);
-    setAttachments(initialAttachments);
-  }, [initialResponse, initialAttachments]);
+    if (initialResponse) {
+      // A real submission exists — show it and clear any stale draft
+      setResponse(initialResponse);
+      setAttachments(initialAttachments);
+      clearDraft(homeworkId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialResponse, initAttachKey]);
 
-  const savedWorkSignature = `${homeworkId}:${initialResponse.trim()}:${initialAttachments.map((a) => a.url).sort().join("|")}`;
+  const savedWorkSignature = `${homeworkId}:${initialResponse.trim()}:${initAttachKey}`;
   useEffect(() => {
     const has = initialResponse.trim().length > 0 || initialAttachments.length > 0;
     setEditingOpen(!has);
   }, [savedWorkSignature]);
+
+  // Auto-save draft to localStorage (debounced 800 ms)
+  function scheduleDraftSave(text: string, files: HomeworkAttachment[]) {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      if (!initialResponse) { // don't save draft if already submitted
+        saveDraft(homeworkId, text, files);
+        setDraftSavedAt(new Date());
+      }
+    }, 800);
+  }
+
+  function handleResponseChange(text: string) {
+    setResponse(text);
+    scheduleDraftSave(text, attachments);
+  }
 
   async function uploadFile(file: File) {
     const formData = new FormData();
@@ -165,6 +217,14 @@ function HomeworkSubmit({
     return res.json() as Promise<{ url: string; name: string; type: "image" | "audio" | "archive" }>;
   }
 
+  function addAttachment(data: { url: string; name: string; type: "image" | "audio" | "archive" }) {
+    setAttachments((prev) => {
+      const next = [...prev, { url: data.url, name: data.name, type: data.type }];
+      scheduleDraftSave(response, next);
+      return next;
+    });
+  }
+
   async function handleFileChange(fileList: FileList | null) {
     if (!fileList?.length) return;
     setUploading(true);
@@ -174,7 +234,7 @@ function HomeworkSubmit({
           alert(e instanceof Error ? e.message : "Upload failed");
           return null;
         });
-        if (data) setAttachments((prev) => [...prev, { url: data.url, name: data.name, type: data.type }]);
+        if (data) addAttachment(data);
       }
     } finally {
       setUploading(false);
@@ -196,7 +256,7 @@ function HomeworkSubmit({
             alert(err instanceof Error ? err.message : "Upload failed");
             return null;
           });
-          if (data) setAttachments((prev) => [...prev, { url: data.url, name: data.name, type: data.type }]);
+          if (data) addAttachment(data);
         }
       } finally {
         setUploading(false);
@@ -209,7 +269,7 @@ function HomeworkSubmit({
     try {
       const file = new File([blob], filename, { type: blob.type });
       const data = await uploadFile(file).catch((e) => { alert(e.message); return null; });
-      if (data) setAttachments((prev) => [...prev, { url: data.url, name: data.name, type: data.type }]);
+      if (data) addAttachment(data);
     } finally {
       setUploading(false);
     }
@@ -217,7 +277,10 @@ function HomeworkSubmit({
 
   async function handleTurnIn() {
     const ok = await onSubmit(homeworkId, response, attachments);
-    if (ok) setEditingOpen(false);
+    if (ok) {
+      clearDraft(homeworkId);
+      setEditingOpen(false);
+    }
   }
 
   if (hasSavedWork && !editingOpen) {
@@ -265,10 +328,15 @@ function HomeworkSubmit({
           Write your answer below. You can attach files or record a voice message, same as your teacher.
         </p>
       </div>
-      <label className="block text-sm font-semibold text-ink mb-1">Written answer</label>
+      <div className="flex items-baseline justify-between mb-1">
+        <label className="block text-sm font-semibold text-ink">Written answer</label>
+        {draftSavedAt && !initialResponse && (
+          <span className="text-[11px] text-ink/35">Draft saved {draftSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+        )}
+      </div>
       <textarea
         value={response}
-        onChange={(e) => setResponse(e.target.value)}
+        onChange={(e) => handleResponseChange(e.target.value)}
         placeholder="Type your homework answer or notes here…"
         className="input min-h-[120px] resize-y w-full"
         rows={4}
@@ -303,7 +371,7 @@ function HomeworkSubmit({
           )}
         </button>
         <span className="text-xs text-ink/45">Voice, images, PDF, Office docs, zip, audio · Paste screenshot (Ctrl+V)</span>
-        <EmojiPicker onInsert={(e) => setResponse((prev) => prev + e)} />
+        <EmojiPicker onInsert={(e) => handleResponseChange(response + e)} />
         {attachments.length > 0 && (
           <ul className="flex flex-wrap gap-2 basis-full">
             {attachments.map((a, i) => (
@@ -311,7 +379,7 @@ function HomeworkSubmit({
                 <span className="text-ink/70 truncate max-w-[140px]">{a.name}</span>
                 <button
                   type="button"
-                  onClick={() => setAttachments((p) => p.filter((_, j) => j !== i))}
+                  onClick={() => setAttachments((p) => { const next = p.filter((_, j) => j !== i); scheduleDraftSave(response, next); return next; })}
                   className="text-red-500 hover:text-red-700"
                   aria-label="Remove attachment"
                 >
@@ -1003,8 +1071,13 @@ function PaymentsTab({
       {flow === "mono" && (
         <div className="rounded-xl border border-[#1B1F3B]/20 bg-[#1B1F3B]/[0.03] p-5 space-y-4">
           {studentInfo?.paymentCode && card && (
-            <div className="rounded-lg border border-ink/10 bg-ink/[0.02] p-3 text-sm text-ink/70 leading-relaxed">
-              Перекажіть на картку нижче. У коментарі до переказу впишіть ваш код.
+            <div className="rounded-lg border border-ink/10 bg-ink/[0.02] p-3 text-sm text-ink/70 leading-relaxed space-y-1">
+              <p className="font-semibold text-ink text-xs uppercase tracking-wide mb-1">Як оплатити через Monobank</p>
+              <p>1. Відкрийте додаток Monobank → «Переказ» або «Платежі».</p>
+              <p>2. Введіть номер картки із блоку нижче.</p>
+              <p>3. Вкажіть суму: ₴{pricePerLesson > 0 ? pricePerLesson : "…"} × кількість занять.</p>
+              <p>4. У полі «Коментар» або «Призначення» вставте ваш особистий код (рожевий блок нижче).</p>
+              <p>5. Підтвердіть переказ — система автоматично зарахує оплату.</p>
             </div>
           )}
 
@@ -1041,9 +1114,14 @@ function PaymentsTab({
       {/* ── Other bank flow ────────────────────────────────────────────────── */}
       {flow === "other" && (
         <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-5 space-y-4">
-          <p className="text-sm text-ink/60">
-            Transfer the exact amount below from <strong>any bank</strong> (PrivatBank, Oschadbank, cash wire…). The last kopecks are your permanent ID — no comment needed.
-          </p>
+          <div className="rounded-lg border border-blue-100 bg-white/60 p-3 text-sm text-ink/70 leading-relaxed space-y-1">
+            <p className="font-semibold text-ink text-xs uppercase tracking-wide mb-1">Як оплатити з будь-якого банку</p>
+            <p>1. Відкрийте свій банк (PrivatBank, Oschadbank, Raiffeisen тощо).</p>
+            <p>2. Оберіть «Переказ на картку» та введіть номер картки нижче.</p>
+            <p>3. Перекажіть <strong>рівно</strong> вказану суму — навіть копійки мають значення!</p>
+            <p>4. Коментар писати <strong>не потрібно</strong> — система впізнає вас за точною сумою автоматично.</p>
+            <p>5. Оплата зараховується протягом кількох хвилин після надходження коштів.</p>
+          </div>
 
           {centsLoading && (
             <p className="text-sm text-ink/40">Loading your payment identifier…</p>
