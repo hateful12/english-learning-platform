@@ -30,6 +30,7 @@ type Item = {
   groupId?: string | null;
   group?: { id: string; name: string } | null;
   attachments?: string;
+  createdAt?: string;
   updatedAt?: string;
   responses?: ResponseItem[];
   closedForStudents?: string[];
@@ -890,6 +891,11 @@ export function HomeworkEditor({
                         >
                           {assignmentLabel(item)}
                         </span>
+                        {item.createdAt && (
+                          <span className="text-xs text-ink/35">
+                            {new Date(item.createdAt).toLocaleDateString("uk-UA", { day: "2-digit", month: "short", year: "numeric" })}
+                          </span>
+                        )}
                         {(() => {
                           const tb = teacherBadge(item);
                           return tb ? (

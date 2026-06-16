@@ -191,6 +191,11 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
       loadTeachers();
       loadPaymentIntents();
     }
+    // Auto-load stats if that tab was last active
+    try {
+      const stored = localStorage.getItem(TEACHER_TAB_STORAGE_KEY);
+      if (stored === "stats") loadStudentStats();
+    } catch { /* ignore */ }
   }, [currentTeacher.isSuperAdmin]);
 
   useLayoutEffect(() => {

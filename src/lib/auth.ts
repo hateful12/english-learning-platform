@@ -100,9 +100,15 @@ export async function teacherCanAccessStudent(
   if (teacher.isSuperAdmin) return true;
   const student = await prisma.student.findUnique({
     where: { id: studentId },
-    select: { teacherId: true },
+    select: {
+      teacherId: true,
+      groups: { select: { group: { select: { teacherId: true } } } },
+    },
   });
-  return student?.teacherId === teacher.id;
+  if (!student) return false;
+  if (student.teacherId === teacher.id) return true;
+  // Also allow if the student is in a group assigned to this teacher
+  return student.groups.some((sg) => sg.group.teacherId === teacher.id);
 }
 
 /** Returns teacher id if email+password match a teacher, null otherwise. */
