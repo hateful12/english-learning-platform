@@ -47,13 +47,14 @@ type Homework = {
   responses?: HomeworkResponse[];
 };
 
-type Tab = "homework" | "groups" | "students" | "schedule" | "payments" | "settings" | "teachers";
+type Tab = "homework" | "groups" | "students" | "schedule" | "payments" | "settings" | "teachers" | "stats";
 
 const BASE_TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "schedule", label: "Schedule", icon: "📅" },
   { id: "homework", label: "Homework", icon: "📝" },
   { id: "students", label: "Students", icon: "👩‍🎓" },
   { id: "groups", label: "Groups", icon: "👥" },
+  { id: "stats", label: "Stats", icon: "📊" },
 ];
 
 const SUPER_ADMIN_TABS: { id: Tab; label: string; icon: string }[] = [
@@ -88,6 +89,19 @@ type Transaction = {
   createdAt: string;
   student: { id: string; name: string | null; email: string };
   lessons: { id: string; title: string; startAt: string }[];
+};
+
+type StudentStat = {
+  studentId: string;
+  name: string | null;
+  email: string;
+  pricePerLesson: number;
+  futurePaidLessons: number;
+  futurePaidAmount: number;
+  overdueLessons: number;
+  overdueAmount: number;
+  totalPaidAmount: number;
+  lastPaymentAt: string | null;
 };
 
 type PaymentIntentSummary = {
@@ -224,6 +238,18 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
       .catch(() => {});
   }
 
+  // Student payment stats
+  const [studentStats, setStudentStats] = useState<StudentStat[]>([]);
+  const [statsLoading, setStatsLoading] = useState(false);
+  function loadStudentStats() {
+    setStatsLoading(true);
+    fetch("/api/teacher/student-stats")
+      .then((r) => r.ok ? r.json() : [])
+      .then((d) => setStudentStats(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setStatsLoading(false));
+  }
+
   async function recordManualPayment(e: React.FormEvent) {
     e.preventDefault();
     if (!manualPayStudentId || !manualPayAmount) return;
@@ -330,6 +356,7 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
                 onClick={() => {
                   setActiveTab(tab.id);
                   persistTeacherTab(tab.id);
+                  if (tab.id === "stats") loadStudentStats();
                 }}
                 className={`relative flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium whitespace-nowrap transition-all duration-150 ${
                   isActive
@@ -778,6 +805,116 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
             }`}>
               {settingsMsg.text}
             </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Stats tab ──────────────────────────────────────────────────────── */}
+      {activeTab === "stats" && (
+        <section className="card p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="font-serif text-xl font-semibold text-ink">Payment stats per student</h2>
+              <p className="text-sm text-ink/50 mt-0.5">Prepaid lessons and outstanding balances</p>
+            </div>
+            <button type="button" onClick={loadStudentStats} className="btn-secondary text-sm">
+              ↻ Refresh
+            </button>
+          </div>
+
+          {statsLoading && (
+            <div className="flex items-center gap-2 text-sm text-ink/40 py-8">
+              <span className="animate-spin">⟳</span> Loading…
+            </div>
+          )}
+
+          {!statsLoading && studentStats.length === 0 && (
+            <p className="text-sm text-ink/40 italic py-8 text-center">No students found.</p>
+          )}
+
+          {!statsLoading && studentStats.length > 0 && (
+            <>
+              {/* Summary row */}
+              {(() => {
+                const totalOverdue = studentStats.reduce((s, r) => s + r.overdueLessons, 0);
+                const totalFuture = studentStats.reduce((s, r) => s + r.futurePaidLessons, 0);
+                const totalPaid = studentStats.reduce((s, r) => s + r.totalPaidAmount, 0);
+                return (
+                  <div className="grid grid-cols-3 gap-3 mb-6">
+                    <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Оплачено наперед</p>
+                      <p className="text-2xl font-bold text-green-700">{totalFuture}</p>
+                      <p className="text-xs text-green-600">занять усього</p>
+                    </div>
+                    <div className={`rounded-xl border p-4 ${totalOverdue > 0 ? "border-red-200 bg-red-50" : "border-ink/10 bg-ink/[0.02]"}`}>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Заборгованість</p>
+                      <p className={`text-2xl font-bold ${totalOverdue > 0 ? "text-red-600" : "text-ink/30"}`}>{totalOverdue}</p>
+                      <p className={`text-xs ${totalOverdue > 0 ? "text-red-500" : "text-ink/30"}`}>занять усього</p>
+                    </div>
+                    <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Всього отримано</p>
+                      <p className="text-2xl font-bold text-ink">₴{totalPaid.toLocaleString("uk-UA")}</p>
+                      <p className="text-xs text-ink/40">за весь час</p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Per-student table */}
+              <div className="divide-y divide-ink/5 rounded-xl border border-ink/10 overflow-hidden">
+                {studentStats.map((s) => (
+                  <div key={s.studentId} className="grid grid-cols-[1fr_auto] gap-4 items-center px-4 py-3 bg-white hover:bg-ink/[0.01] transition-colors">
+                    {/* Left: student info */}
+                    <div className="min-w-0">
+                      <p className="font-medium text-ink truncate">{s.name || s.email}</p>
+                      {s.name && <p className="text-xs text-ink/40 truncate">{s.email}</p>}
+                      {s.lastPaymentAt && (
+                        <p className="text-xs text-ink/35 mt-0.5">
+                          Last payment: {new Date(s.lastPaymentAt).toLocaleDateString("uk-UA", { day: "2-digit", month: "short", year: "numeric" })}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Right: stats badges */}
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                      {/* Future paid */}
+                      <div className={`rounded-lg px-3 py-1.5 text-center min-w-[72px] ${
+                        s.futurePaidLessons > 0 ? "bg-green-50 border border-green-200" : "bg-ink/[0.03] border border-ink/10"
+                      }`}>
+                        <p className={`text-lg font-bold leading-none ${s.futurePaidLessons > 0 ? "text-green-700" : "text-ink/25"}`}>
+                          {s.futurePaidLessons}
+                        </p>
+                        <p className={`text-[10px] mt-0.5 ${s.futurePaidLessons > 0 ? "text-green-600" : "text-ink/25"}`}>
+                          {s.futurePaidLessons > 0 ? `₴${s.futurePaidAmount.toLocaleString()}` : "не сплачено"}
+                        </p>
+                        <p className="text-[9px] text-ink/30 uppercase tracking-wide mt-0.5">наперед</p>
+                      </div>
+
+                      {/* Overdue */}
+                      <div className={`rounded-lg px-3 py-1.5 text-center min-w-[72px] ${
+                        s.overdueLessons > 0 ? "bg-red-50 border border-red-200" : "bg-ink/[0.03] border border-ink/10"
+                      }`}>
+                        <p className={`text-lg font-bold leading-none ${s.overdueLessons > 0 ? "text-red-600" : "text-ink/25"}`}>
+                          {s.overdueLessons}
+                        </p>
+                        <p className={`text-[10px] mt-0.5 ${s.overdueLessons > 0 ? "text-red-500" : "text-ink/25"}`}>
+                          {s.overdueLessons > 0 ? `₴${s.overdueAmount.toLocaleString()}` : "все ок"}
+                        </p>
+                        <p className="text-[9px] text-ink/30 uppercase tracking-wide mt-0.5">борг</p>
+                      </div>
+
+                      {/* Total paid */}
+                      <div className="rounded-lg px-3 py-1.5 text-center min-w-[72px] bg-ink/[0.03] border border-ink/10">
+                        <p className="text-sm font-bold text-ink leading-none">
+                          ₴{s.totalPaidAmount > 0 ? s.totalPaidAmount.toLocaleString() : "0"}
+                        </p>
+                        <p className="text-[9px] text-ink/30 uppercase tracking-wide mt-1">всього</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </section>
       )}
