@@ -44,6 +44,24 @@ function parseAttachmentList(raw: string | undefined): HomeworkAttachment[] {
   }
 }
 
+// ---------- Quick feedback stickers ----------
+const FEEDBACK_STICKERS: Array<{ emoji: string; label: string }> = [
+  { emoji: "⭐", label: "Great work!" },
+  { emoji: "💯", label: "Perfect!" },
+  { emoji: "👏", label: "Well done!" },
+  { emoji: "🌟", label: "Excellent!" },
+  { emoji: "💪", label: "Strong effort!" },
+  { emoji: "🎉", label: "Fantastic!" },
+  { emoji: "🔥", label: "Impressive!" },
+  { emoji: "💡", label: "Creative!" },
+  { emoji: "🎯", label: "On point!" },
+  { emoji: "🤔", label: "Think again" },
+  { emoji: "✏️", label: "Needs revision" },
+  { emoji: "🔁", label: "Try again" },
+  { emoji: "📖", label: "Review this" },
+  { emoji: "💬", label: "Let's discuss" },
+];
+
 // ---------- Feedback Form ----------
 function FeedbackForm({
   responseId,
@@ -129,6 +147,14 @@ function FeedbackForm({
 
   const hasFeedback = !!initialFeedback || initialAttachments.length > 0;
 
+  function insertSticker(emoji: string, label: string) {
+    const stickerText = `${emoji} ${label}`;
+    setFeedback((prev) => {
+      const trimmed = prev.trimEnd();
+      return trimmed ? `${trimmed}\n${stickerText}` : stickerText;
+    });
+  }
+
   return (
     <div className="mt-2">
       {!open ? (
@@ -164,6 +190,27 @@ function FeedbackForm({
           }}
         >
           <p className="text-xs font-semibold text-accent/80 uppercase tracking-wide">Teacher feedback</p>
+
+          {/* Quick stickers */}
+          <div className="space-y-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/35">Quick stickers</p>
+            <div className="flex flex-wrap gap-1.5">
+              {FEEDBACK_STICKERS.map(({ emoji, label }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => insertSticker(emoji, label)}
+                  disabled={saving}
+                  title={`Insert "${emoji} ${label}"`}
+                  className="flex items-center gap-1 rounded-full border border-ink/10 bg-white px-2 py-0.5 text-xs text-ink/70 hover:border-accent/40 hover:bg-accent/5 hover:text-ink transition-colors disabled:opacity-40 select-none"
+                >
+                  <span>{emoji}</span>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <textarea
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
@@ -175,6 +222,7 @@ function FeedbackForm({
 
           <div className="flex flex-wrap gap-2 items-center">
             <VoiceRecorder onRecorded={handleVoiceRecorded} />
+            <EmojiPicker onInsert={(e) => setFeedback((prev) => prev + e)} />
             <input
               ref={fileInputRef}
               type="file"
