@@ -578,9 +578,17 @@ export function HomeworkEditor({
 
   function matchesFilter(item: Item): boolean {
     if (!filterBy) return true;
+    if (filterBy === "__needs_review__") return pendingReviewCount(item) > 0;
     if (filterBy.startsWith("g:")) return item.groupId === filterBy.slice(2);
     if (filterBy.startsWith("s:")) return item.studentId === filterBy.slice(2);
     return true;
+  }
+
+  function pendingReviewCount(item: Item): number {
+    if (!item.responses) return 0;
+    return item.responses.filter(
+      (r) => r.response?.trim() && !r.teacherFeedback?.trim()
+    ).length;
   }
 
   function AssignmentSelect({
@@ -619,7 +627,11 @@ export function HomeworkEditor({
     );
   }
 
-  const activeItems = items.filter((item) => item.status !== "closed" && matchesFilter(item));
+  const allActiveItems = items.filter((item) => item.status !== "closed");
+  const totalPending = allActiveItems.reduce((sum, item) => sum + pendingReviewCount(item), 0);
+  const activeItems = allActiveItems
+    .filter((item) => matchesFilter(item))
+    .sort((a, b) => pendingReviewCount(b) - pendingReviewCount(a));
 
   return (
     <div className="space-y-4">
@@ -705,6 +717,9 @@ export function HomeworkEditor({
             className="input text-sm py-1 w-auto"
           >
             <option value="">All assignments</option>
+            {totalPending > 0 && (
+              <option value="__needs_review__">🔔 Needs review ({totalPending})</option>
+            )}
             {groups.length > 0 && (
               <optgroup label="Groups">
                 {groups.map((g) => (
@@ -733,6 +748,34 @@ export function HomeworkEditor({
             <span className="text-xs text-ink/40">
               {activeItems.length} active result{activeItems.length !== 1 ? "s" : ""}
             </span>
+          )}
+        </div>
+      )}
+
+      {totalPending > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🔔</span>
+            <p className="text-sm font-medium text-orange-800">
+              {totalPending} response{totalPending !== 1 ? "s" : ""} waiting for your feedback
+            </p>
+          </div>
+          {filterBy !== "__needs_review__" ? (
+            <button
+              type="button"
+              onClick={() => setFilterBy("__needs_review__")}
+              className="shrink-0 rounded-md bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700 hover:bg-orange-200 transition-colors"
+            >
+              Show only
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setFilterBy("")}
+              className="shrink-0 text-xs text-orange-600 hover:underline"
+            >
+              Show all
+            </button>
           )}
         </div>
       )}
@@ -848,6 +891,14 @@ export function HomeworkEditor({
                           return tb ? (
                             <span className="text-xs px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-600 font-medium">
                               👤 {tb}
+                            </span>
+                          ) : null;
+                        })()}
+                        {(() => {
+                          const n = pendingReviewCount(item);
+                          return n > 0 ? (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold animate-pulse">
+                              🔔 {n} waiting
                             </span>
                           ) : null;
                         })()}
