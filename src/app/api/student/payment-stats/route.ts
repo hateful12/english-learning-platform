@@ -11,12 +11,15 @@ export async function GET() {
   const now = new Date();
 
   // ── Individual lessons ────────────────────────────────────────────────────
-  const [futurePaidInd, overdueInd] = await Promise.all([
+  const [futurePaidInd, overdueInd, pastPaidInd] = await Promise.all([
     prisma.scheduledLesson.count({
       where: { studentId, isPaid: true, startAt: { gt: now } },
     }),
     prisma.scheduledLesson.count({
       where: { studentId, isPaid: false, startAt: { lt: now } },
+    }),
+    prisma.scheduledLesson.count({
+      where: { studentId, isPaid: true, startAt: { lte: now } },
     }),
   ]);
 
@@ -29,6 +32,7 @@ export async function GET() {
 
   let futurePaidGroup = 0;
   let overdueGroup = 0;
+  let pastPaidGroup = 0;
 
   if (groupIds.length > 0) {
     const groupLessons = await prisma.scheduledLesson.findMany({
@@ -48,6 +52,7 @@ export async function GET() {
         if (isPaid) futurePaidGroup++;
       } else {
         if (!isPaid) overdueGroup++;
+        else pastPaidGroup++;
       }
     }
   }
@@ -65,14 +70,34 @@ export async function GET() {
   const globalPrice = globalSetting ? parseInt(globalSetting.value, 10) : 0;
   const priceKopecks = student?.lessonPrice ?? groupPrice ?? globalPrice;
 
+  // ── Accumulator (true credit balance) ────────────────────────────────────
+  // Total lessons purchased across all payments
+  const totalPaid = await prisma.payment.aggregate({
+    where: { studentId },
+    _sum: { lessonsCount: true, amount: true },
+  });
+  const totalLessonsPurchased = totalPaid._sum.lessonsCount ?? 0;
+  const totalAmountPaidKopecks = totalPaid._sum.amount ?? 0;
+
+  // Lessons already consumed (past + paid)
+  const consumedLessons = (pastPaidInd) + (pastPaidGroup);
+
+  // True balance: lessons bought minus lessons already taken
+  const balanceLessons = Math.max(0, totalLessonsPurchased - consumedLessons);
+  const balanceAmount = Math.round((balanceLessons * priceKopecks) / 100);
+
   const futurePaid = futurePaidInd + futurePaidGroup;
   const overdue = overdueInd + overdueGroup;
 
   return NextResponse.json({
     futurePaidLessons: futurePaid,
-    futurePaidAmount: Math.round((futurePaid * priceKopecks) / 100), // UAH
+    futurePaidAmount: Math.round((futurePaid * priceKopecks) / 100),
     overdueLessons: overdue,
-    overdueAmount: Math.round((overdue * priceKopecks) / 100), // UAH
+    overdueAmount: Math.round((overdue * priceKopecks) / 100),
     pricePerLesson: Math.round(priceKopecks / 100),
+    // Accumulator: total credit remaining regardless of whether lessons are scheduled
+    balanceLessons,
+    balanceAmount,
+    totalAmountPaid: Math.round(totalAmountPaidKopecks / 100),
   });
 }

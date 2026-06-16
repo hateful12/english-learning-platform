@@ -951,6 +951,9 @@ type PaymentStats = {
   overdueLessons: number;
   overdueAmount: number;
   pricePerLesson: number;
+  balanceLessons: number;
+  balanceAmount: number;
+  totalAmountPaid: number;
 } | null;
 
 function PaymentsTab({
@@ -1032,20 +1035,56 @@ function PaymentsTab({
         <p className="text-sm text-ink/70 font-medium">Заняття відбувається по передоплаті.</p>
       </div>
 
-      {/* Payment stats */}
+      {/* Balance accumulator — prominent card */}
       {stats && (
+        <div className={`rounded-2xl border-2 p-5 flex items-center gap-4 ${
+          stats.balanceLessons > 0
+            ? "border-green-300 bg-gradient-to-br from-green-50 to-emerald-50"
+            : stats.overdueLessons > 0
+            ? "border-red-200 bg-red-50"
+            : "border-ink/10 bg-ink/[0.02]"
+        }`}>
+          <div className={`text-4xl font-black leading-none ${
+            stats.balanceLessons > 0 ? "text-green-600" : stats.overdueLessons > 0 ? "text-red-500" : "text-ink/25"
+          }`}>
+            {stats.balanceLessons > 0 ? stats.balanceLessons : stats.overdueLessons > 0 ? `-${stats.overdueLessons}` : "0"}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-ink leading-tight">
+              {stats.balanceLessons > 0
+                ? `${stats.balanceLessons === 1 ? "заняття оплачено" : stats.balanceLessons < 5 ? "заняття оплачено" : "занять оплачено"} наперед`
+                : stats.overdueLessons > 0
+                ? `${stats.overdueLessons === 1 ? "заняття не оплачено" : "занять не оплачено"}`
+                : "Баланс нульовий"}
+            </p>
+            {stats.balanceLessons > 0 && stats.pricePerLesson > 0 && (
+              <p className="text-xs text-green-600 mt-0.5">
+                ₴{stats.balanceAmount.toLocaleString("uk-UA")} залишок
+              </p>
+            )}
+            {stats.overdueLessons > 0 && (
+              <p className="text-xs text-red-500 mt-0.5">
+                ₴{stats.overdueAmount.toLocaleString("uk-UA")} заборгованість
+              </p>
+            )}
+            {stats.balanceLessons === 0 && stats.overdueLessons === 0 && (
+              <p className="text-xs text-ink/40 mt-0.5">поповніть баланс перед наступним заняттям</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Overdue + prepaid detail grid */}
+      {stats && (stats.futurePaidLessons > 0 || stats.overdueLessons > 0) && (
         <div className="grid grid-cols-2 gap-3">
           <div className={`rounded-xl border p-4 ${stats.futurePaidLessons > 0 ? "border-green-200 bg-green-50" : "border-ink/10 bg-ink/[0.02]"}`}>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Оплачено наперед</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Розклад сплачено</p>
             <p className={`text-2xl font-bold ${stats.futurePaidLessons > 0 ? "text-green-700" : "text-ink/30"}`}>
               {stats.futurePaidLessons}
-              <span className="text-sm font-normal ml-1">{stats.futurePaidLessons === 1 ? "заняття" : stats.futurePaidLessons < 5 ? "заняття" : "занять"}</span>
+              <span className="text-sm font-normal ml-1">занять</span>
             </p>
             {stats.futurePaidAmount > 0 && (
               <p className="text-xs text-green-600 mt-0.5">₴{stats.futurePaidAmount.toLocaleString("uk-UA")}</p>
-            )}
-            {stats.futurePaidLessons === 0 && (
-              <p className="text-xs text-ink/35 mt-0.5">поповніть баланс</p>
             )}
           </div>
 
@@ -1053,7 +1092,7 @@ function PaymentsTab({
             <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Заборгованість</p>
             <p className={`text-2xl font-bold ${stats.overdueLessons > 0 ? "text-red-600" : "text-ink/30"}`}>
               {stats.overdueLessons}
-              <span className="text-sm font-normal ml-1">{stats.overdueLessons === 1 ? "заняття" : stats.overdueLessons < 5 ? "заняття" : "занять"}</span>
+              <span className="text-sm font-normal ml-1">занять</span>
             </p>
             {stats.overdueAmount > 0 && (
               <p className="text-xs text-red-500 mt-0.5">₴{stats.overdueAmount.toLocaleString("uk-UA")}</p>

@@ -101,6 +101,8 @@ type StudentStat = {
   overdueLessons: number;
   overdueAmount: number;
   totalPaidAmount: number;
+  balanceLessons: number;
+  balanceAmount: number;
   lastPaymentAt: string | null;
 };
 
@@ -837,14 +839,14 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
               {/* Summary row */}
               {(() => {
                 const totalOverdue = studentStats.reduce((s, r) => s + r.overdueLessons, 0);
-                const totalFuture = studentStats.reduce((s, r) => s + r.futurePaidLessons, 0);
+                const totalBalance = studentStats.reduce((s, r) => s + r.balanceLessons, 0);
                 const totalPaid = studentStats.reduce((s, r) => s + r.totalPaidAmount, 0);
                 return (
                   <div className="grid grid-cols-3 gap-3 mb-6">
                     <div className="rounded-xl border border-green-200 bg-green-50 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Оплачено наперед</p>
-                      <p className="text-2xl font-bold text-green-700">{totalFuture}</p>
-                      <p className="text-xs text-green-600">занять усього</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Загальний баланс</p>
+                      <p className="text-2xl font-bold text-green-700">{totalBalance}</p>
+                      <p className="text-xs text-green-600">занять залишок</p>
                     </div>
                     <div className={`rounded-xl border p-4 ${totalOverdue > 0 ? "border-red-200 bg-red-50" : "border-ink/10 bg-ink/[0.02]"}`}>
                       <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Заборгованість</p>
@@ -877,30 +879,29 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
 
                     {/* Right: stats badges */}
                     <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                      {/* Future paid */}
-                      <div className={`rounded-lg px-3 py-1.5 text-center min-w-[72px] ${
-                        s.futurePaidLessons > 0 ? "bg-green-50 border border-green-200" : "bg-ink/[0.03] border border-ink/10"
+                      {/* Accumulator / balance */}
+                      <div className={`rounded-lg px-3 py-1.5 text-center min-w-[72px] border-2 ${
+                        s.balanceLessons > 0
+                          ? "bg-green-50 border-green-300"
+                          : s.overdueLessons > 0
+                          ? "bg-red-50 border-red-300"
+                          : "bg-ink/[0.03] border-ink/10"
                       }`}>
-                        <p className={`text-lg font-bold leading-none ${s.futurePaidLessons > 0 ? "text-green-700" : "text-ink/25"}`}>
-                          {s.futurePaidLessons}
+                        <p className={`text-lg font-bold leading-none ${
+                          s.balanceLessons > 0 ? "text-green-700" : s.overdueLessons > 0 ? "text-red-600" : "text-ink/25"
+                        }`}>
+                          {s.balanceLessons > 0 ? s.balanceLessons : s.overdueLessons > 0 ? `-${s.overdueLessons}` : "0"}
                         </p>
-                        <p className={`text-[10px] mt-0.5 ${s.futurePaidLessons > 0 ? "text-green-600" : "text-ink/25"}`}>
-                          {s.futurePaidLessons > 0 ? `₴${s.futurePaidAmount.toLocaleString()}` : "не сплачено"}
+                        <p className={`text-[10px] mt-0.5 ${
+                          s.balanceLessons > 0 ? "text-green-600" : s.overdueLessons > 0 ? "text-red-500" : "text-ink/25"
+                        }`}>
+                          {s.balanceLessons > 0
+                            ? `₴${s.balanceAmount.toLocaleString()}`
+                            : s.overdueLessons > 0
+                            ? `₴${s.overdueAmount.toLocaleString()}`
+                            : "баланс 0"}
                         </p>
-                        <p className="text-[9px] text-ink/30 uppercase tracking-wide mt-0.5">наперед</p>
-                      </div>
-
-                      {/* Overdue */}
-                      <div className={`rounded-lg px-3 py-1.5 text-center min-w-[72px] ${
-                        s.overdueLessons > 0 ? "bg-red-50 border border-red-200" : "bg-ink/[0.03] border border-ink/10"
-                      }`}>
-                        <p className={`text-lg font-bold leading-none ${s.overdueLessons > 0 ? "text-red-600" : "text-ink/25"}`}>
-                          {s.overdueLessons}
-                        </p>
-                        <p className={`text-[10px] mt-0.5 ${s.overdueLessons > 0 ? "text-red-500" : "text-ink/25"}`}>
-                          {s.overdueLessons > 0 ? `₴${s.overdueAmount.toLocaleString()}` : "все ок"}
-                        </p>
-                        <p className="text-[9px] text-ink/30 uppercase tracking-wide mt-0.5">борг</p>
+                        <p className="text-[9px] text-ink/30 uppercase tracking-wide mt-0.5">баланс</p>
                       </div>
 
                       {/* Total paid */}
