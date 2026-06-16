@@ -43,7 +43,7 @@ export async function GET() {
   const totalPaidMap = new Map(totalPaidRaw.map((r) => [r.studentId, r._sum.amount ?? 0]));
 
   // Individual lesson counts
-  const [futurePaidInd, overdueInd, pastPaidInd] = await Promise.all([
+  const [futurePaidInd, overdueInd] = await Promise.all([
     prisma.scheduledLesson.groupBy({
       by: ["studentId"],
       _count: { id: true },
@@ -54,15 +54,9 @@ export async function GET() {
       _count: { id: true },
       where: { studentId: { in: students.map((s) => s.id) }, isPaid: false, startAt: { lt: now } },
     }),
-    prisma.scheduledLesson.groupBy({
-      by: ["studentId"],
-      _count: { id: true },
-      where: { studentId: { in: students.map((s) => s.id) }, isPaid: true, startAt: { lte: now } },
-    }),
   ]);
   const futurePaidIndMap = new Map(futurePaidInd.map((r) => [r.studentId!, r._count.id]));
   const overdueIndMap = new Map(overdueInd.map((r) => [r.studentId!, r._count.id]));
-  const pastPaidIndMap = new Map(pastPaidInd.map((r) => [r.studentId!, r._count.id]));
 
   // Group lesson counts (via GroupLessonPayment)
   const allGroupIds = Array.from(new Set(students.flatMap((s) => s.groups.map((g) => g.group.id))));
@@ -91,26 +85,22 @@ export async function GET() {
   // Build per-student group stats
   const futurePaidGroupMap = new Map<string, number>();
   const overdueGroupMap = new Map<string, number>();
-  const pastPaidGroupMap = new Map<string, number>();
 
   for (const student of students) {
     const groupIds = student.groups.map((g) => g.group.id);
     const relevantLessons = groupLessons.filter((l) => groupIds.includes(l.groupId!));
     let futurePaid = 0;
     let overdueCount = 0;
-    let pastPaid = 0;
     for (const lesson of relevantLessons) {
       const isPaid = paidGlpSet.has(`${student.id}:${lesson.id}`);
       if (lesson.startAt > now) {
         if (isPaid) futurePaid++;
       } else {
         if (!isPaid) overdueCount++;
-        else pastPaid++;
       }
     }
     futurePaidGroupMap.set(student.id, futurePaid);
     overdueGroupMap.set(student.id, overdueCount);
-    pastPaidGroupMap.set(student.id, pastPaid);
   }
 
   const result = students.map((s) => {
@@ -119,13 +109,10 @@ export async function GET() {
 
     const futurePaid = (futurePaidIndMap.get(s.id) ?? 0) + (futurePaidGroupMap.get(s.id) ?? 0);
     const overdue = (overdueIndMap.get(s.id) ?? 0) + (overdueGroupMap.get(s.id) ?? 0);
-    const pastPaid = (pastPaidIndMap.get(s.id) ?? 0) + (pastPaidGroupMap.get(s.id) ?? 0);
 
     const totalAmountKopecks = totalPaidMap.get(s.id) ?? 0;
-    // Monetary balance: total paid - (lessons consumed × current price)
-    const consumedKopecks = pastPaid * priceKopecks;
-    const remainingKopecks = totalAmountKopecks - consumedKopecks;
-    const balanceLessons = priceKopecks > 0 ? Math.max(0, Math.floor(remainingKopecks / priceKopecks)) : 0;
+    // Balance = future lessons already paid for (same logic as student view)
+    const balanceLessons = futurePaid;
 
     const lastPaymentAt = s.payments[0]?.receivedAt ?? null;
 

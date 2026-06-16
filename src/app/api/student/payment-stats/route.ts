@@ -11,15 +11,12 @@ export async function GET() {
   const now = new Date();
 
   // ── Individual lessons ────────────────────────────────────────────────────
-  const [futurePaidInd, overdueInd, pastPaidInd] = await Promise.all([
+  const [futurePaidInd, overdueInd] = await Promise.all([
     prisma.scheduledLesson.count({
       where: { studentId, isPaid: true, startAt: { gt: now } },
     }),
     prisma.scheduledLesson.count({
       where: { studentId, isPaid: false, startAt: { lt: now } },
-    }),
-    prisma.scheduledLesson.count({
-      where: { studentId, isPaid: true, startAt: { lte: now } },
     }),
   ]);
 
@@ -32,7 +29,6 @@ export async function GET() {
 
   let futurePaidGroup = 0;
   let overdueGroup = 0;
-  let pastPaidGroup = 0;
 
   if (groupIds.length > 0) {
     const groupLessons = await prisma.scheduledLesson.findMany({
@@ -52,7 +48,6 @@ export async function GET() {
         if (isPaid) futurePaidGroup++;
       } else {
         if (!isPaid) overdueGroup++;
-        else pastPaidGroup++;
       }
     }
   }
@@ -70,22 +65,18 @@ export async function GET() {
   const globalPrice = globalSetting ? parseInt(globalSetting.value, 10) : 0;
   const priceKopecks = student?.lessonPrice ?? groupPrice ?? globalPrice;
 
-  // ── Accumulator (monetary balance) ────────────────────────────────────────
-  // Use actual money paid vs. lessons consumed at current price.
-  // More reliable than summing lessonsCount which can be stale.
   const totalPaid = await prisma.payment.aggregate({
     where: { studentId },
     _sum: { amount: true },
   });
   const totalAmountPaidKopecks = totalPaid._sum.amount ?? 0;
-  const consumedLessons = pastPaidInd + pastPaidGroup;
-  const consumedKopecks = consumedLessons * priceKopecks;
-  const remainingKopecks = totalAmountPaidKopecks - consumedKopecks;
-  const balanceLessons = priceKopecks > 0 ? Math.max(0, Math.floor(remainingKopecks / priceKopecks)) : 0;
-  const balanceAmount = Math.round((balanceLessons * priceKopecks) / 100);
 
   const futurePaid = futurePaidInd + futurePaidGroup;
   const overdue = overdueInd + overdueGroup;
+
+  // Balance = future lessons already paid for (simplest and correct definition)
+  const balanceLessons = futurePaid;
+  const balanceAmount = Math.round((balanceLessons * priceKopecks) / 100);
 
   return NextResponse.json({
     futurePaidLessons: futurePaid,
