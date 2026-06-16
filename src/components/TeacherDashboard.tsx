@@ -195,6 +195,46 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
     loadTransactions();
   }
 
+  const [manualPayStudentId, setManualPayStudentId] = useState("");
+  const [manualPayAmount, setManualPayAmount] = useState("");
+  const [manualPayDate, setManualPayDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [manualPayNote, setManualPayNote] = useState("");
+  const [manualPaySaving, setManualPaySaving] = useState(false);
+  const [manualPayMsg, setManualPayMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function recordManualPayment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!manualPayStudentId || !manualPayAmount) return;
+    setManualPaySaving(true);
+    setManualPayMsg(null);
+    try {
+      const res = await fetch("/api/payments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "recordManual",
+          studentId: manualPayStudentId,
+          amount: parseFloat(manualPayAmount),
+          date: manualPayDate,
+          note: manualPayNote || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setManualPayMsg({ ok: false, text: data.error || "Failed to record payment" });
+        return;
+      }
+      const assigned = typeof data.lessonsAssigned === "number" ? data.lessonsAssigned : 0;
+      setManualPayMsg({ ok: true, text: `Recorded ₴${manualPayAmount} — ${assigned} lesson${assigned !== 1 ? "s" : ""} marked as paid.` });
+      setManualPayAmount("");
+      setManualPayNote("");
+      setManualPayDate(new Date().toISOString().slice(0, 10));
+      loadTransactions();
+    } finally {
+      setManualPaySaving(false);
+    }
+  }
+
   async function saveSettings(e: React.FormEvent) {
     e.preventDefault();
     setSettingsSaving(true);
@@ -501,6 +541,75 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
               </table>
             </div>
           )}
+
+          {/* Record payment from any bank */}
+          <div className="mt-8 border-t border-ink/10 pt-6">
+            <h3 className="font-semibold text-ink mb-1">Record payment from another bank</h3>
+            <p className="text-sm text-ink/50 mb-4">
+              PrivatBank, Oschadbank, cash, wire transfer — enter the details and the system will auto-assign the payment to upcoming lessons.
+            </p>
+            <form onSubmit={recordManualPayment} className="flex flex-wrap gap-3 items-end">
+              <div className="space-y-1 min-w-[160px]">
+                <label className="block text-xs font-medium text-ink/60">Student</label>
+                <select
+                  value={manualPayStudentId}
+                  onChange={(e) => setManualPayStudentId(e.target.value)}
+                  className="input text-sm py-1.5 w-full"
+                  required
+                >
+                  <option value="">Select student…</option>
+                  {students.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name || s.email}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1 w-28">
+                <label className="block text-xs font-medium text-ink/60">Amount (₴)</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={manualPayAmount}
+                  onChange={(e) => setManualPayAmount(e.target.value)}
+                  placeholder="500"
+                  className="input text-sm py-1.5 w-full"
+                  required
+                />
+              </div>
+              <div className="space-y-1 w-36">
+                <label className="block text-xs font-medium text-ink/60">Date</label>
+                <input
+                  type="date"
+                  value={manualPayDate}
+                  onChange={(e) => setManualPayDate(e.target.value)}
+                  className="input text-sm py-1.5 w-full"
+                  required
+                />
+              </div>
+              <div className="space-y-1 min-w-[140px] flex-1">
+                <label className="block text-xs font-medium text-ink/60">Note (bank / reference)</label>
+                <input
+                  type="text"
+                  value={manualPayNote}
+                  onChange={(e) => setManualPayNote(e.target.value)}
+                  placeholder="PrivatBank, cash, …"
+                  className="input text-sm py-1.5 w-full"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={manualPaySaving || !manualPayStudentId || !manualPayAmount}
+                className="btn-primary text-sm py-1.5 px-4 disabled:opacity-50 shrink-0"
+              >
+                {manualPaySaving ? "Saving…" : "Record payment"}
+              </button>
+            </form>
+            {manualPayMsg && (
+              <p className={`mt-2 text-sm ${manualPayMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                {manualPayMsg.ok ? "✓ " : "✗ "}{manualPayMsg.text}
+              </p>
+            )}
+          </div>
 
           {/* Manual paid toggle per lesson */}
           <div className="mt-8 border-t border-ink/10 pt-6">
