@@ -34,13 +34,13 @@ export async function GET() {
   const globalSetting = await prisma.settings.findUnique({ where: { key: "lesson_price" } });
   const globalPrice = globalSetting ? parseInt(globalSetting.value, 10) : 0;
 
-  // Total paid per student (amount + lessonsCount)
+  // Total paid per student (monetary only — lessonsCount is unreliable if price changed over time)
   const totalPaidRaw = await prisma.payment.groupBy({
     by: ["studentId"],
-    _sum: { amount: true, lessonsCount: true },
+    _sum: { amount: true },
     where: { studentId: { in: students.map((s) => s.id) } },
   });
-  const totalPaidMap = new Map(totalPaidRaw.map((r) => [r.studentId, { amount: r._sum.amount ?? 0, lessonsCount: r._sum.lessonsCount ?? 0 }]));
+  const totalPaidMap = new Map(totalPaidRaw.map((r) => [r.studentId, r._sum.amount ?? 0]));
 
   // Individual lesson counts
   const [futurePaidInd, overdueInd, pastPaidInd] = await Promise.all([
@@ -121,9 +121,11 @@ export async function GET() {
     const overdue = (overdueIndMap.get(s.id) ?? 0) + (overdueGroupMap.get(s.id) ?? 0);
     const pastPaid = (pastPaidIndMap.get(s.id) ?? 0) + (pastPaidGroupMap.get(s.id) ?? 0);
 
-    const totals = totalPaidMap.get(s.id) ?? { amount: 0, lessonsCount: 0 };
-    const totalLessonsPurchased = totals.lessonsCount;
-    const balanceLessons = Math.max(0, totalLessonsPurchased - pastPaid);
+    const totalAmountKopecks = totalPaidMap.get(s.id) ?? 0;
+    // Monetary balance: total paid - (lessons consumed × current price)
+    const consumedKopecks = pastPaid * priceKopecks;
+    const remainingKopecks = totalAmountKopecks - consumedKopecks;
+    const balanceLessons = priceKopecks > 0 ? Math.max(0, Math.floor(remainingKopecks / priceKopecks)) : 0;
 
     const lastPaymentAt = s.payments[0]?.receivedAt ?? null;
 
@@ -136,7 +138,7 @@ export async function GET() {
       futurePaidAmount: Math.round((futurePaid * priceKopecks) / 100),
       overdueLessons: overdue,
       overdueAmount: Math.round((overdue * priceKopecks) / 100),
-      totalPaidAmount: Math.round(totals.amount / 100),
+      totalPaidAmount: Math.round(totalAmountKopecks / 100),
       balanceLessons,
       balanceAmount: Math.round((balanceLessons * priceKopecks) / 100),
       lastPaymentAt: lastPaymentAt ? lastPaymentAt.toISOString() : null,

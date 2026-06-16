@@ -70,20 +70,18 @@ export async function GET() {
   const globalPrice = globalSetting ? parseInt(globalSetting.value, 10) : 0;
   const priceKopecks = student?.lessonPrice ?? groupPrice ?? globalPrice;
 
-  // ── Accumulator (true credit balance) ────────────────────────────────────
-  // Total lessons purchased across all payments
+  // ── Accumulator (monetary balance) ────────────────────────────────────────
+  // Use actual money paid vs. lessons consumed at current price.
+  // More reliable than summing lessonsCount which can be stale.
   const totalPaid = await prisma.payment.aggregate({
     where: { studentId },
-    _sum: { lessonsCount: true, amount: true },
+    _sum: { amount: true },
   });
-  const totalLessonsPurchased = totalPaid._sum.lessonsCount ?? 0;
   const totalAmountPaidKopecks = totalPaid._sum.amount ?? 0;
-
-  // Lessons already consumed (past + paid)
-  const consumedLessons = (pastPaidInd) + (pastPaidGroup);
-
-  // True balance: lessons bought minus lessons already taken
-  const balanceLessons = Math.max(0, totalLessonsPurchased - consumedLessons);
+  const consumedLessons = pastPaidInd + pastPaidGroup;
+  const consumedKopecks = consumedLessons * priceKopecks;
+  const remainingKopecks = totalAmountPaidKopecks - consumedKopecks;
+  const balanceLessons = priceKopecks > 0 ? Math.max(0, Math.floor(remainingKopecks / priceKopecks)) : 0;
   const balanceAmount = Math.round((balanceLessons * priceKopecks) / 100);
 
   const futurePaid = futurePaidInd + futurePaidGroup;
@@ -95,7 +93,6 @@ export async function GET() {
     overdueLessons: overdue,
     overdueAmount: Math.round((overdue * priceKopecks) / 100),
     pricePerLesson: Math.round(priceKopecks / 100),
-    // Accumulator: total credit remaining regardless of whether lessons are scheduled
     balanceLessons,
     balanceAmount,
     totalAmountPaid: Math.round(totalAmountPaidKopecks / 100),
