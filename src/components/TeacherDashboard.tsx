@@ -646,7 +646,7 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
               </button>
             </div>
             <p className="text-sm text-ink/50 mb-4">
-              Students who clicked "Generate exact amount" — the system matches incoming transfers by the unique amount automatically.
+              Students who clicked &ldquo;Generate exact amount&rdquo; — the system matches incoming transfers by the unique amount automatically.
             </p>
             {paymentIntents.length === 0 ? (
               <p className="text-sm text-ink/40 italic">No active intents right now.</p>
