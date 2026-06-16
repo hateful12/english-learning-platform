@@ -853,6 +853,32 @@ function HomeworkTab({
 }
 
 
+type PaymentIntent = {
+  id: string;
+  requestedAmount: number;
+  uniqueAmount: number;
+  expiresAt: string;
+  card?: string | null;
+};
+
+function useCountdown(expiresAt: string | null): string {
+  const [remaining, setRemaining] = useState("");
+  useEffect(() => {
+    if (!expiresAt) { setRemaining(""); return; }
+    const tick = () => {
+      const diff = new Date(expiresAt).getTime() - Date.now();
+      if (diff <= 0) { setRemaining("Expired"); return; }
+      const m = Math.floor(diff / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setRemaining(`${m}:${s.toString().padStart(2, "0")}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+  return remaining;
+}
+
 function PaymentsTab({
   studentInfo,
   publicSettings,
@@ -868,6 +894,56 @@ function PaymentsTab({
   onLessonsChange: (n: number) => void;
   onCopy: (code: string) => void;
 }) {
+  const [intent, setIntent] = useState<PaymentIntent | null>(null);
+  const [intentLoading, setIntentLoading] = useState(true);
+  const [intentCreating, setIntentCreating] = useState(false);
+  const [intentError, setIntentError] = useState<string | null>(null);
+  const [intentCopied, setIntentCopied] = useState(false);
+  const countdown = useCountdown(intent?.expiresAt ?? null);
+
+  // Load existing active intent on mount
+  useEffect(() => {
+    fetch("/api/payment-intent")
+      .then((r) => r.json())
+      .then((data) => setIntent(data))
+      .catch(() => {})
+      .finally(() => setIntentLoading(false));
+  }, []);
+
+  async function createIntent() {
+    setIntentCreating(true);
+    setIntentError(null);
+    try {
+      const res = await fetch("/api/payment-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lessonsCount: lessonsToPay }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setIntentError(data.error ?? "Error"); return; }
+      setIntent(data as PaymentIntent);
+    } catch {
+      setIntentError("Network error");
+    } finally {
+      setIntentCreating(false);
+    }
+  }
+
+  async function cancelIntent() {
+    await fetch("/api/payment-intent", { method: "DELETE" });
+    setIntent(null);
+  }
+
+  function copyAmount() {
+    if (!intent) return;
+    const text = (intent.uniqueAmount / 100).toFixed(2);
+    navigator.clipboard.writeText(text).catch(() => {});
+    setIntentCopied(true);
+    setTimeout(() => setIntentCopied(false), 2000);
+  }
+
+  const isExpired = intent && countdown === "Expired";
+
   return (
     <div className="space-y-5">
       {/* Lesson price calculator */}
@@ -906,12 +982,92 @@ function PaymentsTab({
         </div>
       )}
 
+      {/* ── ANY-BANK PAYMENT FLOW ─────────────────────────────────────────── */}
+      {!intentLoading && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-5 space-y-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-600/70 mb-0.5">
+              Pay from any bank
+            </p>
+            <p className="text-sm text-ink/60">
+              PrivatBank, Oschadbank, cash — transfer an exact unique amount and the system matches it automatically. No comment code needed.
+            </p>
+          </div>
+
+          {(!intent || isExpired) ? (
+            <button
+              type="button"
+              onClick={createIntent}
+              disabled={intentCreating}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {intentCreating ? "Generating…" : `Generate exact amount for ${lessonsToPay} lesson${lessonsToPay > 1 ? "s" : ""}`}
+            </button>
+          ) : (
+            <div className="space-y-3">
+              {/* Unique amount to transfer */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">
+                  Transfer EXACTLY this amount
+                </p>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-3xl font-bold text-blue-700 select-all">
+                    ₴{(intent.uniqueAmount / 100).toFixed(2)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={copyAmount}
+                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 transition-colors"
+                  >
+                    {intentCopied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+                <p className="text-xs text-ink/40 mt-1">
+                  (includes {intent.uniqueAmount - intent.requestedAmount} kopecks for unique identification)
+                </p>
+              </div>
+
+              {/* Card to send to */}
+              {(intent.card ?? publicSettings?.monobankCard) && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">To card</p>
+                  <span className="font-mono text-base font-semibold text-ink tracking-wider">
+                    {intent.card ?? publicSettings?.monobankCard}
+                  </span>
+                </div>
+              )}
+
+              {/* Countdown */}
+              <div className="flex items-center justify-between gap-4 pt-1">
+                <p className="text-xs text-ink/50">
+                  ⏱ Expires in{" "}
+                  <span className={`font-semibold ${countdown === "Expired" ? "text-red-600" : "text-ink/70"}`}>
+                    {countdown}
+                  </span>
+                  {" "}— the system checks automatically after you transfer.
+                </p>
+                <button
+                  type="button"
+                  onClick={cancelIntent}
+                  className="shrink-0 text-xs text-ink/40 hover:text-red-500 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {intentError && <p className="text-xs text-red-600">{intentError}</p>}
+        </div>
+      )}
+
+      {/* ── MONOBANK WITH CODE ────────────────────────────────────────────── */}
       {/* Payment instructions */}
       {studentInfo?.paymentCode && publicSettings?.monobankCard && (
         <div className="rounded-xl border border-ink/10 bg-ink/[0.03] p-4 text-sm leading-relaxed">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink/45 mb-2">Інструкція</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink/45 mb-2">Оплата через Monobank з кодом</p>
           <p lang="uk" className="text-ink/90">
-            Перекажіть оплату на картку — її номер вказано в блоці нижче. У коментарі до переказу (поле «Призначення» або «Коментар» у застосунку банку) впишіть лише ваш персональний чотирисимвольний код із рожевого блоку на цій сторінці. Інших даних чи пояснень додавати не потрібно.
+            Перекажіть оплату на картку — її номер вказано в блоці нижче. У коментарі до переказу впишіть лише ваш персональний код із рожевого блоку нижче.
           </p>
         </div>
       )}

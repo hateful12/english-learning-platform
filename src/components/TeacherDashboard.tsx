@@ -90,6 +90,17 @@ type Transaction = {
   lessons: { id: string; title: string; startAt: string }[];
 };
 
+type PaymentIntentSummary = {
+  id: string;
+  studentId: string;
+  requestedAmount: number;
+  uniqueAmount: number;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+  student: { id: string; name: string | null; email: string };
+};
+
 type SettingsData = {
   hasMonobankToken: boolean;
   monobankCard: string;
@@ -162,6 +173,7 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
       loadTransactions();
       loadSettings();
       loadTeachers();
+      loadPaymentIntents();
     }
   }, [currentTeacher.isSuperAdmin]);
 
@@ -201,6 +213,16 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
   const [manualPayNote, setManualPayNote] = useState("");
   const [manualPaySaving, setManualPaySaving] = useState(false);
   const [manualPayMsg, setManualPayMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Payment intents (any-bank flow)
+  const [paymentIntents, setPaymentIntents] = useState<PaymentIntentSummary[]>([]);
+  function loadPaymentIntents() {
+    if (!currentTeacher.isSuperAdmin) return;
+    fetch("/api/payment-intent/admin")
+      .then((r) => r.ok ? r.json() : [])
+      .then((d) => setPaymentIntents(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }
 
   async function recordManualPayment(e: React.FormEvent) {
     e.preventDefault();
@@ -608,6 +630,58 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
               <p className={`mt-2 text-sm ${manualPayMsg.ok ? "text-green-700" : "text-red-600"}`}>
                 {manualPayMsg.ok ? "✓ " : "✗ "}{manualPayMsg.text}
               </p>
+            )}
+          </div>
+
+          {/* Any-bank payment intents */}
+          <div className="mt-8 border-t border-ink/10 pt-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-ink">Any-bank payment intents</h3>
+              <button
+                type="button"
+                onClick={loadPaymentIntents}
+                className="text-xs text-ink/40 hover:text-accent transition-colors"
+              >
+                ↻ Refresh
+              </button>
+            </div>
+            <p className="text-sm text-ink/50 mb-4">
+              Students who clicked "Generate exact amount" — the system matches incoming transfers by the unique amount automatically.
+            </p>
+            {paymentIntents.length === 0 ? (
+              <p className="text-sm text-ink/40 italic">No active intents right now.</p>
+            ) : (
+              <div className="divide-y divide-ink/5 rounded-xl border border-ink/10 overflow-hidden">
+                {paymentIntents.map((pi) => {
+                  const isExpired = new Date(pi.expiresAt) < new Date();
+                  const statusColor =
+                    pi.status === "matched" ? "text-green-600" :
+                    pi.status === "manual_review" ? "text-red-600" :
+                    isExpired ? "text-ink/30" : "text-blue-600";
+                  return (
+                    <div key={pi.id} className="flex items-center gap-4 px-4 py-3 bg-white text-sm">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-ink truncate">
+                          {pi.student.name || pi.student.email}
+                        </p>
+                        <p className="text-xs text-ink/40">
+                          {new Date(pi.createdAt).toLocaleString("uk-UA", { dateStyle: "short", timeStyle: "short" })}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-mono font-semibold text-ink">
+                          ₴{(pi.uniqueAmount / 100).toFixed(2)}
+                        </p>
+                        <p className={`text-xs font-medium ${statusColor}`}>
+                          {pi.status === "matched" ? "✓ matched" :
+                           pi.status === "manual_review" ? "⚠ collision" :
+                           isExpired ? "expired" : "⏳ pending"}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 

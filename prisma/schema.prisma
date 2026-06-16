@@ -27,6 +27,7 @@ model Student {
   scheduledLessons    ScheduledLesson[]
   payments            Payment[]
   groupLessonPayments GroupLessonPayment[]
+  paymentIntents      PaymentIntent[]
   assessments               Assessment[]
   wordleGames               WordleGame[]
   speakingPracticePrompts   SpeakingPracticePrompt[]
@@ -229,6 +230,21 @@ model Settings {
   id    String @id @default(cuid())
   key   String @unique
   value String
+}
+
+// Unique-amount payment intent for matching transfers from any bank (no comment code needed)
+model PaymentIntent {
+  id              String   @id @default(cuid())
+  studentId       String
+  requestedAmount Int      // kopecks — what the student selected to pay
+  uniqueAmount    Int      // kopecks — requestedAmount + 1-99 random kopecks (used for matching)
+  status          String   @default("pending") // "pending" | "matched" | "expired" | "manual_review"
+  expiresAt       DateTime
+  paymentId       String?  // Payment.id once matched
+  createdAt       DateTime @default(now())
+  student         Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([uniqueAmount, status])
 }
 
 model Assessment {
