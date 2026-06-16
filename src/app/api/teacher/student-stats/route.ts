@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getTeacherSession } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 
@@ -42,21 +43,28 @@ export async function GET() {
   });
   const totalPaidMap = new Map(totalPaidRaw.map((r) => [r.studentId, r._sum.amount ?? 0]));
 
-  // Individual lesson counts
-  const [futurePaidInd, overdueInd] = await Promise.all([
-    prisma.scheduledLesson.groupBy({
-      by: ["studentId"],
-      _count: { id: true },
-      where: { studentId: { in: students.map((s) => s.id) }, isPaid: true, startAt: { gt: now } },
-    }),
-    prisma.scheduledLesson.groupBy({
-      by: ["studentId"],
-      _count: { id: true },
-      where: { studentId: { in: students.map((s) => s.id) }, isPaid: false, startAt: { lt: now } },
-    }),
+  // Use ISO string for startAt comparison — Prisma passes Date as integer to SQLite
+  // but stored values are text, causing type mismatch (text > integer always in SQLite).
+  const nowIso = now.toISOString();
+  const studentIds = students.map((s) => s.id);
+
+  if (studentIds.length === 0) return NextResponse.json([]);
+
+  // Individual lesson counts — raw SQL for reliable text datetime comparison
+  const [futurePaidRaw, overdueRaw] = await Promise.all([
+    prisma.$queryRaw<Array<{ studentId: string; cnt: bigint }>>`
+      SELECT studentId, COUNT(id) as cnt FROM "ScheduledLesson"
+      WHERE studentId IN (${Prisma.join(studentIds)})
+        AND isPaid = 1 AND startAt > ${nowIso}
+      GROUP BY studentId`,
+    prisma.$queryRaw<Array<{ studentId: string; cnt: bigint }>>`
+      SELECT studentId, COUNT(id) as cnt FROM "ScheduledLesson"
+      WHERE studentId IN (${Prisma.join(studentIds)})
+        AND isPaid = 0 AND startAt < ${nowIso}
+      GROUP BY studentId`,
   ]);
-  const futurePaidIndMap = new Map(futurePaidInd.map((r) => [r.studentId!, r._count.id]));
-  const overdueIndMap = new Map(overdueInd.map((r) => [r.studentId!, r._count.id]));
+  const futurePaidIndMap = new Map(futurePaidRaw.map((r) => [r.studentId, Number(r.cnt)]));
+  const overdueIndMap = new Map(overdueRaw.map((r) => [r.studentId, Number(r.cnt)]));
 
   // Group lesson counts (via GroupLessonPayment)
   const allGroupIds = Array.from(new Set(students.flatMap((s) => s.groups.map((g) => g.group.id))));
@@ -93,7 +101,8 @@ export async function GET() {
     let overdueCount = 0;
     for (const lesson of relevantLessons) {
       const isPaid = paidGlpSet.has(`${student.id}:${lesson.id}`);
-      if (lesson.startAt > now) {
+      // Compare ISO strings directly to avoid SQLite integer vs text issue
+      if (lesson.startAt.toISOString() > nowIso) {
         if (isPaid) futurePaid++;
       } else {
         if (!isPaid) overdueCount++;

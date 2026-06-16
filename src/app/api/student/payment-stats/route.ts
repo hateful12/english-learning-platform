@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getStudentId } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 
@@ -9,16 +10,21 @@ export async function GET() {
   if (!studentId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const now = new Date();
+  // Use ISO string for comparison — Prisma passes Date as integer to SQLite
+  // but stored startAt values are text; text > integer always in SQLite.
+  const nowIso = now.toISOString();
 
-  // ── Individual lessons ────────────────────────────────────────────────────
-  const [futurePaidInd, overdueInd] = await Promise.all([
-    prisma.scheduledLesson.count({
-      where: { studentId, isPaid: true, startAt: { gt: now } },
-    }),
-    prisma.scheduledLesson.count({
-      where: { studentId, isPaid: false, startAt: { lt: now } },
-    }),
+  // ── Individual lessons — raw SQL for reliable text datetime comparison ────
+  const [futurePaidRaw, overdueRaw] = await Promise.all([
+    prisma.$queryRaw<Array<{ cnt: bigint }>>`
+      SELECT COUNT(id) as cnt FROM "ScheduledLesson"
+      WHERE studentId = ${studentId} AND isPaid = 1 AND startAt > ${nowIso}`,
+    prisma.$queryRaw<Array<{ cnt: bigint }>>`
+      SELECT COUNT(id) as cnt FROM "ScheduledLesson"
+      WHERE studentId = ${studentId} AND isPaid = 0 AND startAt < ${nowIso}`,
   ]);
+  const futurePaidInd = Number(futurePaidRaw[0]?.cnt ?? 0n);
+  const overdueInd = Number(overdueRaw[0]?.cnt ?? 0n);
 
   // ── Group lessons ─────────────────────────────────────────────────────────
   const studentGroups = await prisma.studentGroup.findMany({
@@ -44,7 +50,7 @@ export async function GET() {
 
     for (const lesson of groupLessons) {
       const isPaid = paidLessonIds.has(lesson.id);
-      if (lesson.startAt > now) {
+      if (lesson.startAt.toISOString() > nowIso) {
         if (isPaid) futurePaidGroup++;
       } else {
         if (!isPaid) overdueGroup++;
