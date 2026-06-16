@@ -63,8 +63,8 @@ export async function GET() {
         AND isPaid = 0 AND startAt < ${nowIso}
       GROUP BY studentId`,
   ]);
-  const futurePaidIndMap = new Map(futurePaidRaw.map((r) => [r.studentId, Number(r.cnt)]));
-  const overdueIndMap = new Map(overdueRaw.map((r) => [r.studentId, Number(r.cnt)]));
+  const futurePaidIndMap = new Map(futurePaidRaw.map((r) => [r.studentId, Number(r.cnt) || 0]));
+  const overdueIndMap = new Map(overdueRaw.map((r) => [r.studentId, Number(r.cnt) || 0]));
 
   // Group lesson counts (via GroupLessonPayment)
   const allGroupIds = Array.from(new Set(students.flatMap((s) => s.groups.map((g) => g.group.id))));

@@ -23,8 +23,8 @@ export async function GET() {
       SELECT COUNT(id) as cnt FROM "ScheduledLesson"
       WHERE studentId = ${studentId} AND isPaid = 0 AND startAt < ${nowIso}`,
   ]);
-  const futurePaidInd = Number(futurePaidRaw[0]?.cnt ?? 0n);
-  const overdueInd = Number(overdueRaw[0]?.cnt ?? 0n);
+  const futurePaidInd = futurePaidRaw[0] ? Number(futurePaidRaw[0].cnt) : 0;
+  const overdueInd = overdueRaw[0] ? Number(overdueRaw[0].cnt) : 0;
 
   // ── Group lessons ─────────────────────────────────────────────────────────
   const studentGroups = await prisma.studentGroup.findMany({
