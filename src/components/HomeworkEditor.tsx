@@ -586,8 +586,12 @@ export function HomeworkEditor({
 
   function pendingReviewCount(item: Item): number {
     if (!item.responses) return 0;
+    const closedIds = new Set(item.closedForStudents ?? []);
     return item.responses.filter(
-      (r) => r.response?.trim() && !r.teacherFeedback?.trim()
+      (r) =>
+        r.response?.trim() &&
+        !r.teacherFeedback?.trim() &&
+        !closedIds.has(r.student?.id ?? "")
     ).length;
   }
 
