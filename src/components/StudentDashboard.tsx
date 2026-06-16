@@ -945,6 +945,14 @@ function CopyButton({ text, label = "Copy", copiedLabel = "Copied!" }: { text: s
   );
 }
 
+type PaymentStats = {
+  futurePaidLessons: number;
+  futurePaidAmount: number;
+  overdueLessons: number;
+  overdueAmount: number;
+  pricePerLesson: number;
+} | null;
+
 function PaymentsTab({
   studentInfo,
   publicSettings,
@@ -965,9 +973,18 @@ function PaymentsTab({
   const [centsLoading, setCentsLoading] = useState(false);
   const [centsError, setCentsError] = useState<string | null>(null);
   const [amountCopied, setAmountCopied] = useState(false);
+  const [stats, setStats] = useState<PaymentStats>(null);
 
   const card = publicSettings?.monobankCard;
   const pricePerLesson = publicSettings?.lessonPrice ?? 0; // in UAH
+
+  // Load payment stats once
+  useEffect(() => {
+    fetch("/api/student/payment-stats")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => setStats(d))
+      .catch(() => {});
+  }, []);
 
   // When "other bank" flow is selected, fetch the student's fixed cents
   useEffect(() => {
@@ -1009,6 +1026,45 @@ function PaymentsTab({
 
   return (
     <div className="space-y-5">
+      {/* Prepayment notice */}
+      <div className="rounded-xl border border-ink/10 bg-ink/[0.02] px-4 py-3 flex items-center gap-2">
+        <span className="text-lg" aria-hidden>ℹ️</span>
+        <p className="text-sm text-ink/70 font-medium">Заняття відбувається по передоплаті.</p>
+      </div>
+
+      {/* Payment stats */}
+      {stats && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className={`rounded-xl border p-4 ${stats.futurePaidLessons > 0 ? "border-green-200 bg-green-50" : "border-ink/10 bg-ink/[0.02]"}`}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Оплачено наперед</p>
+            <p className={`text-2xl font-bold ${stats.futurePaidLessons > 0 ? "text-green-700" : "text-ink/30"}`}>
+              {stats.futurePaidLessons}
+              <span className="text-sm font-normal ml-1">{stats.futurePaidLessons === 1 ? "заняття" : stats.futurePaidLessons < 5 ? "заняття" : "занять"}</span>
+            </p>
+            {stats.futurePaidAmount > 0 && (
+              <p className="text-xs text-green-600 mt-0.5">₴{stats.futurePaidAmount.toLocaleString("uk-UA")}</p>
+            )}
+            {stats.futurePaidLessons === 0 && (
+              <p className="text-xs text-ink/35 mt-0.5">поповніть баланс</p>
+            )}
+          </div>
+
+          <div className={`rounded-xl border p-4 ${stats.overdueLessons > 0 ? "border-red-200 bg-red-50" : "border-ink/10 bg-ink/[0.02]"}`}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink/40 mb-1">Заборгованість</p>
+            <p className={`text-2xl font-bold ${stats.overdueLessons > 0 ? "text-red-600" : "text-ink/30"}`}>
+              {stats.overdueLessons}
+              <span className="text-sm font-normal ml-1">{stats.overdueLessons === 1 ? "заняття" : stats.overdueLessons < 5 ? "заняття" : "занять"}</span>
+            </p>
+            {stats.overdueAmount > 0 && (
+              <p className="text-xs text-red-500 mt-0.5">₴{stats.overdueAmount.toLocaleString("uk-UA")}</p>
+            )}
+            {stats.overdueLessons === 0 && (
+              <p className="text-xs text-ink/35 mt-0.5">все сплачено ✓</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Lesson counter */}
       {pricePerLesson > 0 && (
         <div className="rounded-xl border border-ink/10 bg-ink/[0.02] p-5 space-y-4">
