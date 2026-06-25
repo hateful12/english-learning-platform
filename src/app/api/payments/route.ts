@@ -78,17 +78,34 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // INDIVIDUAL LESSON — existing logic
+    // INDIVIDUAL LESSON — mark this lesson + additional if amount covers multiple
     const sId = typeof studentId === "string" ? studentId : lesson.studentId;
     if (!sId) return NextResponse.json({ error: "No student associated" }, { status: 400 });
+
+    // Resolve lesson price to calculate how many lessons the amount covers
+    const studentData = await prisma.student.findUnique({
+      where: { id: sId },
+      select: {
+        lessonPrice: true,
+        groups: { select: { group: { select: { id: true, lessonPrice: true } } } },
+      },
+    });
+    const groupPrice = studentData?.groups.map((g) => g.group.lessonPrice).find((p) => p != null) ?? null;
+    const globalSetting = await prisma.settings.findUnique({ where: { key: "lesson_price" } });
+    const globalPrice = globalSetting ? parseInt(globalSetting.value, 10) : 0;
+    const lessonPrice = studentData?.lessonPrice ?? groupPrice ?? globalPrice;
+    const paidAmountKopecks = Math.round(paidAmount * 100);
+    const lessonsCount = lessonPrice > 0 && paidAmountKopecks > 0
+      ? Math.floor(paidAmountKopecks / lessonPrice)
+      : 1;
 
     if (!lesson.paymentId) {
       const payment = await prisma.payment.create({
         data: {
           studentId: sId,
           monoId: `manual_${lessonId}_${Date.now()}`,
-          amount: paidAmount,
-          lessonsCount: 1,
+          amount: paidAmountKopecks > 0 ? paidAmountKopecks : paidAmount,
+          lessonsCount,
           comment: "Manually marked as paid by teacher",
           receivedAt,
         },
@@ -97,10 +114,29 @@ export async function PATCH(request: NextRequest) {
         where: { id: lessonId },
         data: { isPaid: true, paymentId: payment.id },
       });
+      // Mark additional future lessons if lessonsCount > 1
+      if (lessonsCount > 1) {
+        const extraLessons = await prisma.scheduledLesson.findMany({
+          where: {
+            studentId: sId,
+            isPaid: false,
+            id: { not: lessonId },
+            startAt: { gte: lesson.startAt },
+          },
+          orderBy: { startAt: "asc" },
+          take: lessonsCount - 1,
+        });
+        for (const extra of extraLessons) {
+          await prisma.scheduledLesson.update({
+            where: { id: extra.id },
+            data: { isPaid: true, paymentId: payment.id },
+          });
+        }
+      }
     } else {
       if (paidAmount > 0 || paidAt) {
         const updateData: { amount?: number; receivedAt?: Date } = {};
-        if (paidAmount > 0) updateData.amount = paidAmount;
+        if (paidAmountKopecks > 0) updateData.amount = paidAmountKopecks;
         if (paidAt) updateData.receivedAt = receivedAt;
         await prisma.payment.update({
           where: { id: lesson.paymentId },
@@ -113,7 +149,7 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, lessonsMarked: lessonsCount });
   }
 
   // ─── markUnpaid ────────────────────────────────────────────────────────────

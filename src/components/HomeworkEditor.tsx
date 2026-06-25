@@ -971,9 +971,27 @@ export function HomeworkEditor({
                     />
                   ) : null}
                   {parseAttachments(item).length > 0 && (
-                    <p className="text-xs text-ink/50">
-                      Attachments: {parseAttachments(item).map((a) => a.name).join(", ")}
-                    </p>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {parseAttachments(item).map((a) => (
+                        <div key={a.url} className="rounded border border-ink/10 bg-ink/5 p-2 max-w-xs">
+                          {a.type === "image" ? (
+                            <a href={normalizeAttachmentUrl(a.url)} target="_blank" rel="noopener noreferrer" className="block">
+                              <img src={normalizeAttachmentUrl(a.url)} alt={a.name} className="max-h-40 rounded object-contain" />
+                              <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
+                            </a>
+                          ) : a.type === "audio" ? (
+                            <div>
+                              <p className="text-xs text-ink/60 mb-0.5">{a.name}</p>
+                              <audio src={normalizeAttachmentUrl(a.url)} controls className="h-8 w-full max-w-sm" />
+                            </div>
+                          ) : (
+                            <a href={normalizeAttachmentUrl(a.url)} download={a.name} className="text-accent hover:underline flex items-center gap-1 text-xs">
+                              📎 {a.name}
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   )}
 
                   {(() => {
@@ -1058,11 +1076,20 @@ export function HomeworkEditor({
                                           )}
                                           {feedbackAttachments.map((a) => (
                                             <div key={a.url} className="mt-1">
-                                              {a.type === "audio" && (
+                                              {a.type === "image" ? (
+                                                <a href={normalizeAttachmentUrl(a.url)} target="_blank" rel="noopener noreferrer" className="block">
+                                                  <img src={normalizeAttachmentUrl(a.url)} alt={a.name} className="max-h-32 rounded object-contain" />
+                                                  <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
+                                                </a>
+                                              ) : a.type === "audio" ? (
                                                 <div>
                                                   <p className="text-xs text-ink/50 mb-0.5">{a.name}</p>
                                                   <audio src={normalizeAttachmentUrl(a.url)} controls className="h-8 w-full max-w-sm" />
                                                 </div>
+                                              ) : (
+                                                <a href={normalizeAttachmentUrl(a.url)} download={a.name} className="text-accent hover:underline flex items-center gap-1 text-xs">
+                                                  📎 {a.name}
+                                                </a>
                                               )}
                                             </div>
                                           ))}
@@ -1132,11 +1159,20 @@ export function HomeworkEditor({
                                       )}
                                       {feedbackAttachments.map((a) => (
                                         <div key={a.url} className="mt-1">
-                                          {a.type === "audio" && (
+                                          {a.type === "image" ? (
+                                            <a href={normalizeAttachmentUrl(a.url)} target="_blank" rel="noopener noreferrer" className="block">
+                                              <img src={normalizeAttachmentUrl(a.url)} alt={a.name} className="max-h-32 rounded object-contain" />
+                                              <span className="mt-1 block text-xs text-ink/60">{a.name}</span>
+                                            </a>
+                                          ) : a.type === "audio" ? (
                                             <div>
                                               <p className="text-xs text-ink/50 mb-0.5">{a.name}</p>
                                               <audio src={normalizeAttachmentUrl(a.url)} controls className="h-8 w-full max-w-sm" />
                                             </div>
+                                          ) : (
+                                            <a href={normalizeAttachmentUrl(a.url)} download={a.name} className="text-accent hover:underline flex items-center gap-1 text-xs">
+                                              📎 {a.name}
+                                            </a>
                                           )}
                                         </div>
                                       ))}
