@@ -362,6 +362,8 @@ export function HomeworkEditor({
   const [archiveGroup, setArchiveGroup] = useState<string>("");
   const [archiveMonth, setArchiveMonth] = useState<string>("");
   const [filterBy, setFilterBy] = useState<string>("");
+  const [filterFrom, setFilterFrom] = useState<string>("");
+  const [filterTo, setFilterTo] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -578,10 +580,14 @@ export function HomeworkEditor({
   }
 
   function matchesFilter(item: Item): boolean {
-    if (!filterBy) return true;
-    if (filterBy === "__needs_review__") return pendingReviewCount(item) > 0;
-    if (filterBy.startsWith("g:")) return item.groupId === filterBy.slice(2);
-    if (filterBy.startsWith("s:")) return item.studentId === filterBy.slice(2);
+    if (filterBy === "__needs_review__" && pendingReviewCount(item) === 0) return false;
+    if (filterBy.startsWith("g:") && item.groupId !== filterBy.slice(2)) return false;
+    if (filterBy.startsWith("s:") && item.studentId !== filterBy.slice(2)) return false;
+    if (filterFrom || filterTo) {
+      const d = item.createdAt ? item.createdAt.slice(0, 10) : "";
+      if (filterFrom && d < filterFrom) return false;
+      if (filterTo && d > filterTo) return false;
+    }
     return true;
   }
 
@@ -636,7 +642,12 @@ export function HomeworkEditor({
   const totalPending = allActiveItems.reduce((sum, item) => sum + pendingReviewCount(item), 0);
   const activeItems = allActiveItems
     .filter((item) => matchesFilter(item))
-    .sort((a, b) => pendingReviewCount(b) - pendingReviewCount(a));
+    .sort((a, b) => {
+      // Pending reviews float to top; within same bucket sort by date DESC
+      const pendingDiff = pendingReviewCount(b) - pendingReviewCount(a);
+      if (pendingDiff !== 0) return pendingDiff;
+      return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
+    });
 
   return (
     <div className="space-y-4">
@@ -740,18 +751,35 @@ export function HomeworkEditor({
               </optgroup>
             )}
           </select>
-          {filterBy && (
+          {/* Date range filter */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-ink/40 shrink-0">from</span>
+            <input
+              type="date"
+              value={filterFrom}
+              onChange={(e) => setFilterFrom(e.target.value)}
+              className="input text-sm py-1 w-auto"
+            />
+            <span className="text-xs text-ink/40 shrink-0">to</span>
+            <input
+              type="date"
+              value={filterTo}
+              onChange={(e) => setFilterTo(e.target.value)}
+              className="input text-sm py-1 w-auto"
+            />
+          </div>
+          {(filterBy || filterFrom || filterTo) && (
             <button
               type="button"
-              onClick={() => setFilterBy("")}
+              onClick={() => { setFilterBy(""); setFilterFrom(""); setFilterTo(""); }}
               className="text-xs text-ink/40 hover:text-ink/70 underline"
             >
-              Clear
+              Clear all
             </button>
           )}
-          {filterBy && (
+          {(filterBy || filterFrom || filterTo) && (
             <span className="text-xs text-ink/40">
-              {activeItems.length} active result{activeItems.length !== 1 ? "s" : ""}
+              {activeItems.length} result{activeItems.length !== 1 ? "s" : ""}
             </span>
           )}
         </div>
