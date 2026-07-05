@@ -308,6 +308,7 @@ export async function POST(request: NextRequest) {
         studentId: rsStudentId,
         groupId: rsGroupId,
         deleteFrom,
+        weekday: rsWeekday,
         startAt: rsStartAt,
         title: rsTitle,
         durationMin: rsDuration,
@@ -331,25 +332,47 @@ export async function POST(request: NextRequest) {
         ? new Date(deleteFrom).toISOString()
         : new Date().toISOString();
 
-      // Delete future unpaid lessons from deleteFrom date
+      // Optional weekday filter (0=Sun…6=Sat). When provided (drag-and-drop reschedule),
+      // only lessons on that same weekday are deleted so other series are untouched.
+      // SQLite strftime('%w', …) returns '0'…'6'.
+      const weekdayStr =
+        typeof rsWeekday === "number" ? String(rsWeekday) : null;
+
+      // Delete future unpaid lessons from deleteFrom date (same weekday only when specified)
       let deletedCount = 0;
       if (sId) {
-        const toDelete = await prisma.$queryRaw<Array<{ id: string }>>`
-          SELECT id FROM "ScheduledLesson"
-          WHERE studentId = ${sId} AND isPaid = 0 AND startAt >= ${deleteFromIso}
-        `;
+        const toDelete = weekdayStr !== null
+          ? await prisma.$queryRaw<Array<{ id: string }>>`
+              SELECT id FROM "ScheduledLesson"
+              WHERE studentId = ${sId} AND isPaid = 0 AND startAt >= ${deleteFromIso}
+                AND strftime('%w', startAt) = ${weekdayStr}
+            `
+          : await prisma.$queryRaw<Array<{ id: string }>>`
+              SELECT id FROM "ScheduledLesson"
+              WHERE studentId = ${sId} AND isPaid = 0 AND startAt >= ${deleteFromIso}
+            `;
         deletedCount = toDelete.length;
         for (const row of toDelete) {
           await prisma.$executeRaw`DELETE FROM "ScheduledLesson" WHERE id = ${row.id}`;
         }
       } else if (gId) {
-        const toDelete = await prisma.$queryRaw<Array<{ id: string }>>`
-          SELECT id FROM "ScheduledLesson"
-          WHERE groupId = ${gId} AND startAt >= ${deleteFromIso}
-          AND NOT EXISTS (
-            SELECT 1 FROM "GroupLessonPayment" glp WHERE glp.lessonId = "ScheduledLesson".id AND glp.isPaid = 1
-          )
-        `;
+        const toDelete = weekdayStr !== null
+          ? await prisma.$queryRaw<Array<{ id: string }>>`
+              SELECT id FROM "ScheduledLesson"
+              WHERE groupId = ${gId} AND startAt >= ${deleteFromIso}
+                AND strftime('%w', startAt) = ${weekdayStr}
+                AND NOT EXISTS (
+                  SELECT 1 FROM "GroupLessonPayment" glp
+                  WHERE glp.lessonId = "ScheduledLesson".id AND glp.isPaid = 1
+                )
+            `
+          : await prisma.$queryRaw<Array<{ id: string }>>`
+              SELECT id FROM "ScheduledLesson"
+              WHERE groupId = ${gId} AND startAt >= ${deleteFromIso}
+              AND NOT EXISTS (
+                SELECT 1 FROM "GroupLessonPayment" glp WHERE glp.lessonId = "ScheduledLesson".id AND glp.isPaid = 1
+              )
+            `;
         deletedCount = toDelete.length;
         for (const row of toDelete) {
           await prisma.$executeRaw`DELETE FROM "ScheduledLesson" WHERE id = ${row.id}`;

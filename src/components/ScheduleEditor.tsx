@@ -184,42 +184,22 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
           return;
         }
       } else {
-        // Reschedule all future lessons: delete future unpaid from lesson's old date,
-        // create new series with same interval, shifted to new weekday/time
+        // Reschedule only future lessons on the SAME WEEKDAY as the dragged lesson.
+        // A student/group can have multiple series (e.g. Tue + Thu); each weekday
+        // is treated as its own independent recurring series (always 7-day interval).
         const oldDate = new Date(lesson.startAt);
-        const daysDiff = Math.round((newStart.getTime() - oldDate.getTime()) / (24 * 60 * 60 * 1000));
+        const originalWeekday = oldDate.getDay(); // 0=Sun … 6=Sat
 
-        // Find the repeat interval by looking at other lessons for the same student/group
-        const sameEntity = lessons.filter(
-          (l) =>
-            l.id !== lesson.id &&
-            (lesson.studentId ? l.studentId === lesson.studentId : l.groupId === lesson.groupId)
-        ).sort((a, b) => a.startAt.localeCompare(b.startAt));
-
-        // Guess the interval from consecutive lessons
-        let guessedInterval = 7;
-        if (sameEntity.length >= 2) {
-          const gaps: number[] = [];
-          for (let i = 1; i < Math.min(sameEntity.length, 5); i++) {
-            const diff = Math.round(
-              (new Date(sameEntity[i].startAt).getTime() - new Date(sameEntity[i - 1].startAt).getTime()) /
-                (24 * 60 * 60 * 1000)
-            );
-            if (diff > 0) gaps.push(diff);
-          }
-          if (gaps.length > 0) {
-            guessedInterval = Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length);
-          }
-        }
-
-        // Count future unpaid lessons for same student/group
         const nowIso = new Date().toISOString();
-        const futureLessons = lessons.filter((l) => {
+
+        // Count future unpaid lessons on the SAME weekday only
+        const futureSameDay = lessons.filter((l) => {
           if (lesson.studentId && l.studentId !== lesson.studentId) return false;
           if (lesson.groupId && l.groupId !== lesson.groupId) return false;
-          return l.startAt >= nowIso && !l.isPaid;
+          if (l.startAt < nowIso || l.isPaid) return false;
+          return new Date(l.startAt).getDay() === originalWeekday;
         });
-        const repeatCount = Math.max(1, futureLessons.length);
+        const repeatCount = Math.max(1, futureSameDay.length);
 
         const res = await fetch("/api/schedule", {
           method: "POST",
@@ -229,12 +209,14 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
             studentId: lesson.studentId ?? null,
             groupId: lesson.groupId ?? null,
             deleteFrom: nowIso,
+            // Pass the original weekday so the API deletes only that weekday's lessons
+            weekday: originalWeekday,
             startAt: newStart.toISOString(),
             title: lesson.title,
             durationMin: lesson.durationMin,
             zoomUrl: lesson.zoomUrl ?? null,
             notes: lesson.notes ?? null,
-            repeatDays: guessedInterval,
+            repeatDays: 7, // strictly weekly per-series
             repeatCount,
           }),
         });
@@ -244,7 +226,6 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
           setDragSaving(false);
           return;
         }
-        void daysDiff; // used implicitly via newStart
       }
 
       await fetchLessons();
