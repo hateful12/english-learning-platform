@@ -139,6 +139,25 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
   const [error, setError] = useState<string | null>(null);
   const [colorMap, setColorMap] = useState<Record<string, string>>({});
 
+  // ── Reschedule state ───────────────────────────────────────────────────────
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rsForm, setRsForm] = useState({
+    studentId: "",
+    groupId: "",
+    deleteFrom: new Date().toISOString().slice(0, 10),
+    startAt: "",
+    title: "",
+    durationMin: 60,
+    zoomUrl: "",
+    notes: "",
+    repeatType: "week" as RepeatType,
+    customDays: 7,
+    repeatCount: 10,
+  });
+  const [rsSaving, setRsSaving] = useState(false);
+  const [rsError, setRsError] = useState<string | null>(null);
+  const [rsResult, setRsResult] = useState<{ deleted: number; created: number } | null>(null);
+
   useEffect(() => {
     try {
       const stored = JSON.parse(localStorage.getItem(LS_COLOR_KEY) ?? "{}");
@@ -238,6 +257,78 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
     if (form.repeatType === "2weeks") return 14;
     if (form.repeatType === "custom") return Math.max(1, form.customDays);
     return 0;
+  }
+
+  function rsRepeatDays(): number {
+    if (rsForm.repeatType === "week") return 7;
+    if (rsForm.repeatType === "2weeks") return 14;
+    if (rsForm.repeatType === "custom") return Math.max(1, rsForm.customDays);
+    return 7;
+  }
+
+  function openReschedule() {
+    // Pre-fill title from the most recent lesson for the first student if available
+    const lastLesson = lessons
+      .filter((l) => l.studentId)
+      .sort((a, b) => b.startAt.localeCompare(a.startAt))[0];
+    const today = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const nextMonday = new Date(today);
+    nextMonday.setDate(today.getDate() + ((8 - today.getDay()) % 7 || 7));
+    const defaultStart = `${nextMonday.getFullYear()}-${pad(nextMonday.getMonth() + 1)}-${pad(nextMonday.getDate())}T10:00`;
+    setRsForm((f) => ({
+      ...f,
+      title: lastLesson?.title ?? "Lesson",
+      startAt: defaultStart,
+      deleteFrom: today.toISOString().slice(0, 10),
+      studentId: "",
+      groupId: "",
+    }));
+    setRsError(null);
+    setRsResult(null);
+    setRescheduleOpen(true);
+  }
+
+  async function handleReschedule() {
+    if (!rsForm.startAt || !rsForm.title.trim()) {
+      setRsError("Title and start date/time are required");
+      return;
+    }
+    if (!rsForm.studentId && !rsForm.groupId) {
+      setRsError("Select a student or group");
+      return;
+    }
+    setRsSaving(true);
+    setRsError(null);
+    try {
+      const res = await fetch("/api/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reschedule",
+          studentId: rsForm.studentId || null,
+          groupId: rsForm.groupId || null,
+          deleteFrom: new Date(rsForm.deleteFrom).toISOString(),
+          startAt: new Date(rsForm.startAt).toISOString(),
+          title: rsForm.title.trim(),
+          durationMin: rsForm.durationMin,
+          zoomUrl: rsForm.zoomUrl.trim() || null,
+          notes: rsForm.notes.trim() || null,
+          repeatDays: rsRepeatDays(),
+          repeatCount: rsForm.repeatCount,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setRsResult({ deleted: data.deleted ?? 0, created: data.created ?? 0 });
+        await fetchLessons();
+      } else {
+        setRsError(data.error ?? "Something went wrong");
+      }
+    } catch {
+      setRsError("Network error — please try again");
+    }
+    setRsSaving(false);
   }
 
   async function handleSave() {
@@ -432,12 +523,20 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
       <div className="p-4">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold text-ink">Schedule</h2>
-          <button
-            onClick={() => openCreateModal()}
-            className="btn-primary text-sm px-3 py-1.5"
-          >
-            + New lesson
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openReschedule}
+              className="btn-secondary text-sm px-3 py-1.5"
+            >
+              🔄 Reschedule
+            </button>
+            <button
+              onClick={() => openCreateModal()}
+              className="btn-primary text-sm px-3 py-1.5"
+            >
+              + New lesson
+            </button>
+          </div>
         </div>
 
         <div className="card p-1" style={{ height: 600 }}>
@@ -890,6 +989,195 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reschedule Modal ─────────────────────────────────────────────── */}
+      {rescheduleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
+            onClick={() => { if (!rsSaving) setRescheduleOpen(false); }}
+          />
+          <div className="relative card w-full max-w-md p-6 shadow-xl bg-white overflow-y-auto max-h-[90vh] space-y-4">
+            <h3 className="text-base font-semibold text-ink">🔄 Reschedule</h3>
+            <p className="text-xs text-ink/50">
+              Deletes all future <strong>unpaid</strong> lessons from the chosen date, then creates a new series.
+            </p>
+
+            {rsResult ? (
+              <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm space-y-1">
+                <p className="font-semibold text-green-700">Done!</p>
+                <p className="text-green-600">Deleted: <strong>{rsResult.deleted}</strong> unpaid lesson{rsResult.deleted !== 1 ? "s" : ""}</p>
+                <p className="text-green-600">Created: <strong>{rsResult.created}</strong> new lesson{rsResult.created !== 1 ? "s" : ""}</p>
+                <button
+                  className="mt-2 btn-primary text-sm"
+                  onClick={() => setRescheduleOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* Student or Group */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-ink/60 mb-1">Student</label>
+                    <select
+                      className="input text-sm"
+                      value={rsForm.studentId}
+                      onChange={(e) => setRsForm({ ...rsForm, studentId: e.target.value, groupId: "" })}
+                    >
+                      <option value="">— none —</option>
+                      {students.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name || s.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink/60 mb-1">Group</label>
+                    <select
+                      className="input text-sm"
+                      value={rsForm.groupId}
+                      onChange={(e) => setRsForm({ ...rsForm, groupId: e.target.value, studentId: "" })}
+                    >
+                      <option value="">— none —</option>
+                      {groups.map((g) => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Delete from */}
+                <div>
+                  <label className="block text-xs font-medium text-ink/60 mb-1">Delete unpaid lessons from</label>
+                  <input
+                    type="date"
+                    className="input text-sm"
+                    value={rsForm.deleteFrom}
+                    onChange={(e) => setRsForm({ ...rsForm, deleteFrom: e.target.value })}
+                  />
+                  <p className="text-xs text-ink/40 mt-0.5">Paid lessons are never touched.</p>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label className="block text-xs font-medium text-ink/60 mb-1">Lesson title *</label>
+                  <input
+                    className="input text-sm"
+                    placeholder="e.g. English lesson"
+                    value={rsForm.title}
+                    onChange={(e) => setRsForm({ ...rsForm, title: e.target.value })}
+                  />
+                </div>
+
+                {/* New start date/time */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-ink/60 mb-1">First new lesson *</label>
+                    <input
+                      type="datetime-local"
+                      className="input text-sm"
+                      value={rsForm.startAt}
+                      onChange={(e) => setRsForm({ ...rsForm, startAt: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink/60 mb-1">Duration</label>
+                    <select
+                      className="input text-sm"
+                      value={rsForm.durationMin}
+                      onChange={(e) => setRsForm({ ...rsForm, durationMin: Number(e.target.value) })}
+                    >
+                      {DURATION_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Repeat */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-ink/60 mb-1">Repeat</label>
+                    <select
+                      className="input text-sm"
+                      value={rsForm.repeatType}
+                      onChange={(e) => setRsForm({ ...rsForm, repeatType: e.target.value as RepeatType })}
+                    >
+                      {REPEAT_OPTIONS.filter((o) => o.value !== "none").map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink/60 mb-1">Number of lessons</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={52}
+                      className="input text-sm"
+                      value={rsForm.repeatCount}
+                      onChange={(e) => setRsForm({ ...rsForm, repeatCount: Math.min(52, Math.max(1, Number(e.target.value))) })}
+                    />
+                  </div>
+                </div>
+                {rsForm.repeatType === "custom" && (
+                  <div>
+                    <label className="block text-xs font-medium text-ink/60 mb-1">Interval (days)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      className="input text-sm"
+                      value={rsForm.customDays}
+                      onChange={(e) => setRsForm({ ...rsForm, customDays: Math.max(1, Number(e.target.value)) })}
+                    />
+                  </div>
+                )}
+
+                {/* Optional zoom / notes */}
+                <div>
+                  <label className="block text-xs font-medium text-ink/60 mb-1">Zoom link (optional)</label>
+                  <input
+                    className="input text-sm"
+                    placeholder="https://zoom.us/j/..."
+                    value={rsForm.zoomUrl}
+                    onChange={(e) => setRsForm({ ...rsForm, zoomUrl: e.target.value })}
+                  />
+                </div>
+
+                {/* Preview */}
+                {rsForm.startAt && rsForm.repeatCount > 0 && (
+                  <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-700 space-y-0.5">
+                    <p>Will create <strong>{rsForm.repeatCount}</strong> lesson{rsForm.repeatCount !== 1 ? "s" : ""} every <strong>{rsRepeatDays()} day{rsRepeatDays() !== 1 ? "s" : ""}</strong></p>
+                    <p>From <strong>{new Date(rsForm.startAt).toLocaleDateString("uk-UA", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</strong></p>
+                    <p className="text-orange-600">All unpaid lessons from <strong>{new Date(rsForm.deleteFrom + "T00:00").toLocaleDateString("uk-UA", { day: "2-digit", month: "short", year: "numeric" })}</strong> will be removed for the selected student/group.</p>
+                  </div>
+                )}
+
+                {rsError && <p className="text-sm text-red-600">{rsError}</p>}
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    onClick={() => setRescheduleOpen(false)}
+                    className="btn-secondary text-sm"
+                    disabled={rsSaving}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleReschedule}
+                    disabled={rsSaving || !rsForm.startAt || !rsForm.title.trim() || (!rsForm.studentId && !rsForm.groupId)}
+                    className="btn-primary text-sm disabled:opacity-50"
+                  >
+                    {rsSaving ? "Working…" : `Delete old & create ${rsForm.repeatCount} lessons`}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

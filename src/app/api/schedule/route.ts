@@ -300,6 +300,107 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
+    // ── Reschedule action ──────────────────────────────────────────────────────
+    // Deletes all future unpaid lessons from `deleteFrom` for a student/group,
+    // then bulk-creates a new series starting at `startAt`.
+    if ((body as Record<string, unknown>)?.action === "reschedule") {
+      const {
+        studentId: rsStudentId,
+        groupId: rsGroupId,
+        deleteFrom,
+        startAt: rsStartAt,
+        title: rsTitle,
+        durationMin: rsDuration,
+        zoomUrl: rsZoomUrl,
+        notes: rsNotes,
+        repeatDays: rsRepeatDays,
+        repeatCount: rsRepeatCount,
+      } = body as Record<string, unknown>;
+
+      const sId = rsStudentId && typeof rsStudentId === "string" ? rsStudentId : null;
+      const gId = rsGroupId && typeof rsGroupId === "string" ? rsGroupId : null;
+      if (!sId && !gId) return NextResponse.json({ error: "studentId or groupId required" }, { status: 400 });
+      if (!rsStartAt) return NextResponse.json({ error: "startAt required" }, { status: 400 });
+      if (!rsTitle || typeof rsTitle !== "string" || !rsTitle.trim()) return NextResponse.json({ error: "title required" }, { status: 400 });
+
+      if (sId && !(await teacherCanAccessStudent(teacher, sId))) {
+        return NextResponse.json({ error: "Student not found" }, { status: 404 });
+      }
+
+      const deleteFromIso = deleteFrom && typeof deleteFrom === "string"
+        ? new Date(deleteFrom).toISOString()
+        : new Date().toISOString();
+
+      // Delete future unpaid lessons from deleteFrom date
+      let deletedCount = 0;
+      if (sId) {
+        const toDelete = await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM "ScheduledLesson"
+          WHERE studentId = ${sId} AND isPaid = 0 AND startAt >= ${deleteFromIso}
+        `;
+        deletedCount = toDelete.length;
+        for (const row of toDelete) {
+          await prisma.$executeRaw`DELETE FROM "ScheduledLesson" WHERE id = ${row.id}`;
+        }
+      } else if (gId) {
+        const toDelete = await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM "ScheduledLesson"
+          WHERE groupId = ${gId} AND startAt >= ${deleteFromIso}
+          AND NOT EXISTS (
+            SELECT 1 FROM "GroupLessonPayment" glp WHERE glp.lessonId = "ScheduledLesson".id AND glp.isPaid = 1
+          )
+        `;
+        deletedCount = toDelete.length;
+        for (const row of toDelete) {
+          await prisma.$executeRaw`DELETE FROM "ScheduledLesson" WHERE id = ${row.id}`;
+        }
+      }
+
+      // Create new lessons (reuse same logic as regular bulk create)
+      const dur = typeof rsDuration === "number" ? rsDuration : 60;
+      const zoom = rsZoomUrl && typeof rsZoomUrl === "string" ? rsZoomUrl.trim() || null : null;
+      const notesVal = rsNotes && typeof rsNotes === "string" ? rsNotes.trim() || null : null;
+      const occurrences = typeof rsRepeatCount === "number" && rsRepeatCount > 1 ? rsRepeatCount : 1;
+      const intervalDays = typeof rsRepeatDays === "number" && rsRepeatDays > 0 ? rsRepeatDays : 7;
+      const baseStart = new Date(rsStartAt as string);
+
+      let groupMemberIds: string[] = [];
+      if (gId) {
+        const members = await prisma.$queryRaw<{ studentId: string }[]>`
+          SELECT studentId FROM "StudentGroup" WHERE groupId = ${gId}
+        `;
+        groupMemberIds = members.map((m) => m.studentId);
+      }
+
+      const created: ReturnType<typeof formatLesson>[] = [];
+      for (let i = 0; i < occurrences; i++) {
+        const start = new Date(baseStart.getTime() + i * intervalDays * 24 * 60 * 60 * 1000);
+        const id = randomUUID().replace(/-/g, "");
+        const now = new Date().toISOString();
+        const startISO = start.toISOString();
+        await prisma.$executeRaw`
+          INSERT INTO "ScheduledLesson" (id, title, startAt, durationMin, zoomUrl, notes, studentId, groupId, isPaid, createdAt)
+          VALUES (${id}, ${rsTitle.toString().trim()}, ${startISO}, ${dur}, ${zoom}, ${notesVal}, ${sId}, ${gId}, 0, ${now})
+        `;
+        for (const memberId of groupMemberIds) {
+          await prisma.$executeRaw`INSERT OR IGNORE INTO "GroupLessonPayment" (studentId, lessonId, isPaid) VALUES (${memberId}, ${id}, 0)`;
+        }
+        const rows = await prisma.$queryRaw<LessonRow[]>`
+          SELECT sl.id, sl.title, sl.startAt, sl.durationMin, sl.zoomUrl, sl.notes,
+                 sl.studentId, sl.groupId, sl.isPaid, sl.createdAt, NULL AS glp_isPaid,
+                 s.id AS s_id, s.email AS s_email, s.name AS s_name,
+                 g.id AS g_id, g.name AS g_name
+          FROM "ScheduledLesson" sl
+          LEFT JOIN "Student" s ON s.id = sl.studentId
+          LEFT JOIN "Group"   g ON g.id = sl.groupId
+          WHERE sl.id = ${id}
+        `;
+        if (rows[0]) created.push(formatLesson(rows[0], true, undefined));
+      }
+
+      return NextResponse.json({ deleted: deletedCount, created: created.length, lessons: created });
+    }
+
     const {
       title, startAt, durationMin, zoomUrl, notes, studentId, groupId,
       repeatDays, repeatCount,
