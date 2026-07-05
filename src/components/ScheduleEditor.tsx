@@ -19,7 +19,7 @@ const localizer = dateFnsLocalizer({
 // Wrap Calendar with drag-and-drop support. Cast to loose type to avoid
 // type conflicts between custom CalendarEvent and the DnD wrapper generics.
 // eslint-disable-next-line
-const DnDCalendar = withDragAndDrop(Calendar as Parameters<typeof withDragAndDrop>[0]) as React.ComponentType<Record<string, unknown>>;
+const DnDCalendar = withDragAndDrop(Calendar as Parameters<typeof withDragAndDrop>[0]) as unknown as React.ComponentType<Record<string, unknown>>;
 
 // ── Calendar event colours ────────────────────────────────────────────────
 const COLOR_PALETTE = [
