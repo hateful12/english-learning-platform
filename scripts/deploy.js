@@ -3,13 +3,18 @@ const conn = new Client();
 conn.on("ready", () => {
   const cmd = [
     "cd /var/www/english-app",
-    // Backup DB before every deploy — use the path Prisma resolves to (schema-relative)
+    // 1. Backup DB before every deploy (production DB lives at prisma/prisma/dev.db)
     "mkdir -p /var/backups/english-app",
     "cp prisma/prisma/dev.db /var/backups/english-app/pre-deploy-$(date +%s).db && echo DB_BACKED_UP || echo NO_BACKUP_NEEDED",
+    // 2. Preserve DB to /tmp so git pull cannot delete it
+    "cp prisma/prisma/dev.db /tmp/prod-db-preserve.db 2>/dev/null || true",
     "git stash",
     "git pull origin feat/super-admin-assign-group-teacher",
+    // 3. Restore DB if git pull removed it (e.g. because it was untracked from git history)
+    "mkdir -p prisma/prisma",
+    "[ -f prisma/prisma/dev.db ] || (cp /tmp/prod-db-preserve.db prisma/prisma/dev.db && echo DB_RESTORED_AFTER_GIT_PULL)",
     "npm install --legacy-peer-deps",
-    // Safe schema sync — no --accept-data-loss to prevent accidental table drops
+    // 4. Safe schema sync — only adds new tables/columns, never drops data
     "npx prisma db push",
     "npx prisma generate",
     "npm run build",
