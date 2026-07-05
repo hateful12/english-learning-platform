@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Calendar, dateFnsLocalizer, SlotInfo, View } from "react-big-calendar";
 import withDragAndDrop, { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop";
 import { format, parse, startOfWeek, getDay } from "date-fns";
@@ -16,9 +16,10 @@ const localizer = dateFnsLocalizer({
   locales: { "en-US": enUS },
 });
 
-// Wrap Calendar with drag-and-drop support from react-big-calendar addon
+// Wrap Calendar with drag-and-drop support. Cast to loose type to avoid
+// type conflicts between custom CalendarEvent and the DnD wrapper generics.
 // eslint-disable-next-line
-const DnDCalendar = withDragAndDrop(Calendar as Parameters<typeof withDragAndDrop>[0]);
+const DnDCalendar = withDragAndDrop(Calendar as Parameters<typeof withDragAndDrop>[0]) as React.ComponentType<Record<string, unknown>>;
 
 // ── Calendar event colours ────────────────────────────────────────────────
 const COLOR_PALETTE = [
