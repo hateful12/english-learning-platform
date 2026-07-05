@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getStudentId, getTeacherSession } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/assessment
 // Student: returns their own assessments
 // Teacher: returns all students' latest completed assessment (for badge display)
