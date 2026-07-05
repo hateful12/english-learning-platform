@@ -665,7 +665,7 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
             onNavigate={setCurrentDate}
             selectable
             onSelectSlot={openCreateModal}
-            onSelectEvent={(e) => openEditModal(e as CalendarEvent)}
+            onSelectEvent={(e: unknown) => openEditModal(e as CalendarEvent)}
             components={{ event: EventComponent }}
             eventPropGetter={eventPropGetter}
             step={30}
