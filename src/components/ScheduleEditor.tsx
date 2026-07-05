@@ -16,8 +16,9 @@ const localizer = dateFnsLocalizer({
   locales: { "en-US": enUS },
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const DnDCalendar = withDragAndDrop(Calendar as any);
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */ // prettier-ignore
+// @ts-expect-error DnD wrapper requires Calendar cast
+const DnDCalendar = withDragAndDrop(Calendar as Parameters<typeof withDragAndDrop>[0]);
 
 // ── Calendar event colours ────────────────────────────────────────────────
 const COLOR_PALETTE = [
