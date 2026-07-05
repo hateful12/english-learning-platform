@@ -249,6 +249,7 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
   // Student payment stats
   const [studentStats, setStudentStats] = useState<StudentStat[]>([]);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [resettingStatId, setResettingStatId] = useState<string | null>(null);
   function loadStudentStats() {
     setStatsLoading(true);
     fetch("/api/teacher/student-stats")
@@ -256,6 +257,20 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
       .then((d) => setStudentStats(Array.isArray(d) ? d : []))
       .catch(() => {})
       .finally(() => setStatsLoading(false));
+  }
+  async function resetStat(studentId: string, action: "overdue" | "balance", label: string) {
+    if (!window.confirm(`Скинути ${label} для цього студента? Дію не можна відмінити.`)) return;
+    setResettingStatId(studentId + action);
+    try {
+      await fetch("/api/teacher/reset-stat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId, action }),
+      });
+      loadStudentStats();
+    } finally {
+      setResettingStatId(null);
+    }
   }
 
   async function recordManualPayment(e: React.FormEvent) {
@@ -909,6 +924,32 @@ export function TeacherDashboard({ currentTeacher }: { currentTeacher: CurrentTe
                         </p>
                         <p className="text-[9px] text-ink/30 uppercase tracking-wide mt-0.5">баланс</p>
                       </div>
+
+                      {/* Reset buttons — only shown when there's something to reset */}
+                      {currentTeacher.isSuperAdmin && (s.overdueLessons > 0 || s.balanceLessons > 0) && (
+                        <div className="flex flex-col gap-1">
+                          {s.overdueLessons > 0 && (
+                            <button
+                              onClick={() => resetStat(s.studentId, "overdue", `борг (${s.overdueLessons} занять)`)}
+                              disabled={resettingStatId === s.studentId + "overdue"}
+                              title="Списати борг — позначити прострочені заняття як оплачені"
+                              className="text-[10px] px-2 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400 transition-colors disabled:opacity-40 whitespace-nowrap"
+                            >
+                              {resettingStatId === s.studentId + "overdue" ? "…" : "↺ борг"}
+                            </button>
+                          )}
+                          {s.balanceLessons > 0 && (
+                            <button
+                              onClick={() => resetStat(s.studentId, "balance", `аванс (${s.balanceLessons} занять)`)}
+                              disabled={resettingStatId === s.studentId + "balance"}
+                              title="Скинути аванс — зняти відмітку 'оплачено' з майбутніх занять"
+                              className="text-[10px] px-2 py-1 rounded border border-green-200 text-green-600 hover:bg-green-50 hover:border-green-400 transition-colors disabled:opacity-40 whitespace-nowrap"
+                            >
+                              {resettingStatId === s.studentId + "balance" ? "…" : "↺ аванс"}
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {/* Total paid */}
                       <div className="rounded-lg px-3 py-1.5 text-center min-w-[72px] bg-ink/[0.03] border border-ink/10">
