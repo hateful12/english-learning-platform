@@ -39,8 +39,9 @@ yarn-error.log*
 # local SQLite snapshots (npm run db:backup)
 /backups/
 
-# prisma — SQLite DB is tracked at prisma/prisma/dev.db (matches DATABASE_URL=file:./prisma/dev.db)
+# prisma — never commit the SQLite database; production data lives on the server
 prisma/dev.db
+prisma/prisma/dev.db
 prisma/*.db-journal
 prisma/prisma/*.db-journal
 
