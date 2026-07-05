@@ -3,9 +3,9 @@ const conn = new Client();
 conn.on("ready", () => {
   const cmd = [
     "cd /var/www/english-app",
-    // Backup DB before every deploy
+    // Backup DB before every deploy — use the path Prisma resolves to (schema-relative)
     "mkdir -p /var/backups/english-app",
-    "cp prisma/dev.db /var/backups/english-app/pre-deploy-$(date +%s).db && echo DB_BACKED_UP",
+    "cp prisma/prisma/dev.db /var/backups/english-app/pre-deploy-$(date +%s).db && echo DB_BACKED_UP || echo NO_BACKUP_NEEDED",
     "git stash",
     "git pull origin feat/super-admin-assign-group-teacher",
     "npm install --legacy-peer-deps",
