@@ -16,8 +16,8 @@ const localizer = dateFnsLocalizer({
   locales: { "en-US": enUS },
 });
 
-/* eslint-disable-next-line @typescript-eslint/no-explicit-any */ // prettier-ignore
-// @ts-expect-error DnD wrapper requires Calendar cast
+// Wrap Calendar with drag-and-drop support from react-big-calendar addon
+// eslint-disable-next-line
 const DnDCalendar = withDragAndDrop(Calendar as Parameters<typeof withDragAndDrop>[0]);
 
 // ── Calendar event colours ────────────────────────────────────────────────
