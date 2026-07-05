@@ -12,6 +12,7 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:backup": "node scripts/backup-sqlite-db.js",
+    "setup:vps-backup": "node scripts/setup-vps-backup-cron.js",
     "db:seed": "tsx prisma/seed.ts"
   },
   "prisma": {

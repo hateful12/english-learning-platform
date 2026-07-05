@@ -3,9 +3,11 @@ const conn = new Client();
 conn.on("ready", () => {
   const cmd = [
     "cd /var/www/english-app",
-    // 1. Backup DB before every deploy (production DB lives at prisma/prisma/dev.db)
-    "mkdir -p /var/backups/english-app",
-    "cp prisma/prisma/dev.db /var/backups/english-app/pre-deploy-$(date +%s).db && echo DB_BACKED_UP || echo NO_BACKUP_NEEDED",
+    // 1. Backup DB before every deploy (auto + pre-deploy snapshot)
+    "mkdir -p /var/backups/english-app/auto /var/backups/english-app/daily",
+    "chmod +x scripts/vps-backup.sh 2>/dev/null || true",
+    "scripts/vps-backup.sh 2>/dev/null || true",
+    "sqlite3 prisma/prisma/dev.db \".backup '/var/backups/english-app/pre-deploy-$(date +%s).db'\" && echo DB_BACKED_UP || (cp prisma/prisma/dev.db /var/backups/english-app/pre-deploy-$(date +%s).db && echo DB_BACKED_UP) || echo NO_BACKUP_NEEDED",
     // 2. Preserve DB to /tmp so git pull cannot delete it
     "cp prisma/prisma/dev.db /tmp/prod-db-preserve.db 2>/dev/null || true",
     "git stash",
