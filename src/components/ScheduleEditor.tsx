@@ -2,9 +2,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Calendar, dateFnsLocalizer, SlotInfo, View } from "react-big-calendar";
+import withDragAndDrop, { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { enUS } from "date-fns/locale";
 import "react-big-calendar/lib/css/react-big-calendar.css";
+import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 
 const localizer = dateFnsLocalizer({
   format,
@@ -13,6 +15,9 @@ const localizer = dateFnsLocalizer({
   getDay,
   locales: { "en-US": enUS },
 });
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const DnDCalendar = withDragAndDrop(Calendar as any);
 
 // ── Calendar event colours ────────────────────────────────────────────────
 const COLOR_PALETTE = [
@@ -138,6 +143,115 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
   const [markPaidStudentId, setMarkPaidStudentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [colorMap, setColorMap] = useState<Record<string, string>>({});
+
+  // ── Drag-drop confirmation state ──────────────────────────────────────────
+  type DragConfirm = {
+    lesson: ScheduledLesson;
+    newStart: Date;
+    newEnd: Date;
+  };
+  const [dragConfirm, setDragConfirm] = useState<DragConfirm | null>(null);
+  const [dragSaving, setDragSaving] = useState(false);
+  const [dragError, setDragError] = useState<string | null>(null);
+
+  function handleEventDrop({ event, start, end }: EventInteractionArgs<CalendarEvent>) {
+    const lesson = (event as CalendarEvent).resource;
+    if (!lesson) return;
+    setDragConfirm({ lesson, newStart: start as Date, newEnd: end as Date });
+    setDragError(null);
+  }
+
+  async function confirmDragMove(mode: "once" | "all") {
+    if (!dragConfirm) return;
+    setDragSaving(true);
+    setDragError(null);
+    const { lesson, newStart } = dragConfirm;
+
+    try {
+      if (mode === "once") {
+        // Just PATCH this single lesson
+        const res = await fetch(`/api/schedule/${lesson.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ startAt: newStart.toISOString() }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          setDragError(d.error ?? "Failed to save");
+          setDragSaving(false);
+          return;
+        }
+      } else {
+        // Reschedule all future lessons: delete future unpaid from lesson's old date,
+        // create new series with same interval, shifted to new weekday/time
+        const oldDate = new Date(lesson.startAt);
+        const daysDiff = Math.round((newStart.getTime() - oldDate.getTime()) / (24 * 60 * 60 * 1000));
+
+        // Find the repeat interval by looking at other lessons for the same student/group
+        const sameEntity = lessons.filter(
+          (l) =>
+            l.id !== lesson.id &&
+            (lesson.studentId ? l.studentId === lesson.studentId : l.groupId === lesson.groupId)
+        ).sort((a, b) => a.startAt.localeCompare(b.startAt));
+
+        // Guess the interval from consecutive lessons
+        let guessedInterval = 7;
+        if (sameEntity.length >= 2) {
+          const gaps: number[] = [];
+          for (let i = 1; i < Math.min(sameEntity.length, 5); i++) {
+            const diff = Math.round(
+              (new Date(sameEntity[i].startAt).getTime() - new Date(sameEntity[i - 1].startAt).getTime()) /
+                (24 * 60 * 60 * 1000)
+            );
+            if (diff > 0) gaps.push(diff);
+          }
+          if (gaps.length > 0) {
+            guessedInterval = Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length);
+          }
+        }
+
+        // Count future unpaid lessons for same student/group
+        const nowIso = new Date().toISOString();
+        const futureLessons = lessons.filter((l) => {
+          if (lesson.studentId && l.studentId !== lesson.studentId) return false;
+          if (lesson.groupId && l.groupId !== lesson.groupId) return false;
+          return l.startAt >= nowIso && !l.isPaid;
+        });
+        const repeatCount = Math.max(1, futureLessons.length);
+
+        const res = await fetch("/api/schedule", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "reschedule",
+            studentId: lesson.studentId ?? null,
+            groupId: lesson.groupId ?? null,
+            deleteFrom: nowIso,
+            startAt: newStart.toISOString(),
+            title: lesson.title,
+            durationMin: lesson.durationMin,
+            zoomUrl: lesson.zoomUrl ?? null,
+            notes: lesson.notes ?? null,
+            repeatDays: guessedInterval,
+            repeatCount,
+          }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          setDragError(d.error ?? "Failed to reschedule");
+          setDragSaving(false);
+          return;
+        }
+        void daysDiff; // used implicitly via newStart
+      }
+
+      await fetchLessons();
+      setDragConfirm(null);
+    } catch {
+      setDragError("Network error — please try again");
+    }
+    setDragSaving(false);
+  }
 
   // ── Reschedule state ───────────────────────────────────────────────────────
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
@@ -540,7 +654,7 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
         </div>
 
         <div className="card p-1" style={{ height: 600 }}>
-          <Calendar
+          <DnDCalendar
             localizer={localizer}
             events={events}
             view={view}
@@ -555,6 +669,10 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
             step={30}
             timeslots={2}
             scrollToTime={new Date(1970, 1, 1, 8, 0, 0)}
+            onEventDrop={handleEventDrop}
+            onEventResize={handleEventDrop}
+            resizable
+            draggableAccessor={() => true}
           />
         </div>
       </div>
@@ -988,6 +1106,57 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
                     : "Create"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Drag-drop Confirmation Modal ─────────────────────────────────── */}
+      {dragConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-ink/40 backdrop-blur-sm" />
+          <div className="relative card w-full max-w-sm p-6 shadow-xl bg-white space-y-4">
+            <h3 className="text-base font-semibold text-ink">Зберегти новий розклад?</h3>
+            <div className="rounded-lg bg-ink/5 border border-ink/10 px-4 py-3 text-sm space-y-1">
+              <p className="text-ink/60">
+                <span className="font-medium text-ink">{dragConfirm.lesson.title}</span>
+                {(dragConfirm.lesson.student?.name || dragConfirm.lesson.student?.email) && (
+                  <span className="ml-1 text-ink/40">· {dragConfirm.lesson.student.name || dragConfirm.lesson.student.email}</span>
+                )}
+              </p>
+              <p className="text-ink/50 text-xs">
+                {new Date(dragConfirm.lesson.startAt).toLocaleString("uk-UA", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                {" → "}
+                <span className="font-medium text-ink">
+                  {dragConfirm.newStart.toLocaleString("uk-UA", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </p>
+            </div>
+
+            {dragError && <p className="text-sm text-red-600">{dragError}</p>}
+
+            <div className="space-y-2">
+              <button
+                onClick={() => confirmDragMove("all")}
+                disabled={dragSaving}
+                className="btn-primary w-full text-sm disabled:opacity-50"
+              >
+                {dragSaving ? "Збереження…" : "Так — оновити всі майбутні заняття"}
+              </button>
+              <button
+                onClick={() => confirmDragMove("once")}
+                disabled={dragSaving}
+                className="btn-secondary w-full text-sm disabled:opacity-50"
+              >
+                Тільки це заняття
+              </button>
+              <button
+                onClick={() => setDragConfirm(null)}
+                disabled={dragSaving}
+                className="w-full text-sm text-ink/40 hover:text-ink/70 underline"
+              >
+                Скасувати
+              </button>
             </div>
           </div>
         </div>
