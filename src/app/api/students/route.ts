@@ -6,6 +6,19 @@ const VALID_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
 const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 72; // bcrypt silently truncates beyond 72 bytes
 
+const studentSelect = {
+  id: true,
+  email: true,
+  name: true,
+  paymentCode: true,
+  lessonPrice: true,
+  level: true,
+  teacherId: true,
+  teacher: { select: { id: true, email: true } },
+  teacherStudents: { select: { teacher: { select: { id: true, email: true } } } },
+  createdAt: true,
+} as const;
+
 export async function GET() {
   const teacher = await getTeacherSession();
   if (!teacher) {
@@ -14,22 +27,17 @@ export async function GET() {
   const students = teacher.isSuperAdmin
     ? await prisma.student.findMany({
         orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          paymentCode: true,
-          lessonPrice: true,
-          level: true,
-          teacherId: true,
-          teacher: { select: { id: true, email: true } },
-          createdAt: true,
-        },
+        select: studentSelect,
       })
     : await prisma.student.findMany({
-        where: { teacherId: teacher.id },
+        where: {
+          OR: [
+            { teacherId: teacher.id },
+            { teacherStudents: { some: { teacherId: teacher.id } } },
+          ],
+        },
         orderBy: { createdAt: "desc" },
-        select: { id: true, email: true, name: true, level: true, teacherId: true, createdAt: true },
+        select: studentSelect,
       });
   return NextResponse.json(students);
 }
@@ -43,7 +51,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { id, lessonPrice, level, temporaryPassword, teacherId } = (body as Record<string, unknown>) ?? {};
+  const { id, lessonPrice, level, temporaryPassword, teacherId, teacherIds } = (body as Record<string, unknown>) ?? {};
   if (typeof id !== "string") return NextResponse.json({ error: "id required" }, { status: 400 });
 
   if (!(await teacherCanAccessStudent(teacher, id))) {
@@ -51,6 +59,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const updateData: Record<string, unknown> = {};
+  let syncTeacherIds: string[] | null = null;
 
   if (lessonPrice !== undefined) {
     if (!teacher.isSuperAdmin) {
@@ -62,12 +71,25 @@ export async function PATCH(request: NextRequest) {
         : null;
   }
 
-  if (teacherId !== undefined) {
+  // Multi-teacher assignment via teacherIds array (preferred)
+  if (teacherIds !== undefined) {
+    if (!teacher.isSuperAdmin) {
+      return NextResponse.json({ error: "Only the super-admin can assign teachers" }, { status: 403 });
+    }
+    if (!Array.isArray(teacherIds) || !teacherIds.every((t) => typeof t === "string")) {
+      return NextResponse.json({ error: "teacherIds must be an array of strings" }, { status: 400 });
+    }
+    syncTeacherIds = teacherIds as string[];
+    // Keep legacy teacherId in sync with first teacher (or null)
+    updateData.teacherId = syncTeacherIds[0] ?? null;
+  } else if (teacherId !== undefined) {
+    // Legacy single-teacher assignment
     if (!teacher.isSuperAdmin) {
       return NextResponse.json({ error: "Only the super-admin can assign teachers" }, { status: 403 });
     }
     if (teacherId === null || teacherId === "") {
       updateData.teacherId = null;
+      syncTeacherIds = [];
     } else if (typeof teacherId === "string") {
       const assignedTeacher = await prisma.teacher.findUnique({
         where: { id: teacherId },
@@ -77,6 +99,7 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: "Teacher not found" }, { status: 404 });
       }
       updateData.teacherId = teacherId;
+      syncTeacherIds = [teacherId];
     } else {
       return NextResponse.json({ error: "Invalid teacher" }, { status: 400 });
     }
@@ -112,7 +135,7 @@ export async function PATCH(request: NextRequest) {
     updateData.passwordHash = await hashPassword(pwd);
   }
 
-  if (Object.keys(updateData).length === 0) {
+  if (Object.keys(updateData).length === 0 && syncTeacherIds === null) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
 
@@ -121,22 +144,35 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
   }
 
-  const updated = await prisma.student.update({
+  // Validate all teacherIds exist before writing
+  if (syncTeacherIds && syncTeacherIds.length > 0) {
+    const found = await prisma.teacher.findMany({
+      where: { id: { in: syncTeacherIds } },
+      select: { id: true },
+    });
+    if (found.length !== syncTeacherIds.length) {
+      return NextResponse.json({ error: "One or more teachers not found" }, { status: 404 });
+    }
+  }
+
+  // Update student fields
+  if (Object.keys(updateData).length > 0) {
+    await prisma.student.update({ where: { id }, data: updateData });
+  }
+
+  // Sync TeacherStudent join table
+  if (syncTeacherIds !== null) {
+    await prisma.teacherStudent.deleteMany({ where: { studentId: id } });
+    if (syncTeacherIds.length > 0) {
+      await prisma.teacherStudent.createMany({
+        data: syncTeacherIds.map((tid) => ({ teacherId: tid, studentId: id })),
+      });
+    }
+  }
+
+  const updated = await prisma.student.findUnique({
     where: { id },
-    data: updateData,
-    select: teacher.isSuperAdmin
-      ? {
-          id: true,
-          email: true,
-          name: true,
-          paymentCode: true,
-          lessonPrice: true,
-          level: true,
-          teacherId: true,
-          teacher: { select: { id: true, email: true } },
-          createdAt: true,
-        }
-      : { id: true, email: true, name: true, level: true, teacherId: true, createdAt: true },
+    select: studentSelect,
   });
 
   return NextResponse.json(updated);

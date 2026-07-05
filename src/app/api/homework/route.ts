@@ -79,12 +79,16 @@ export async function GET(request: NextRequest) {
         LEFT JOIN "Group" g ON g.id = h.groupId
         WHERE h.studentId IS NULL AND h.groupId IS NULL
            OR s.teacherId = ${teacherSession.id}
+           OR EXISTS (SELECT 1 FROM "TeacherStudent" ts WHERE ts.studentId = h.studentId AND ts.teacherId = ${teacherSession.id})
            OR g.teacherId = ${teacherSession.id}
            OR EXISTS (
              SELECT 1
              FROM "StudentGroup" sg
              JOIN "Student" member ON member.id = sg.studentId
-             WHERE sg.groupId = h.groupId AND member.teacherId = ${teacherSession.id}
+             WHERE sg.groupId = h.groupId AND (
+               member.teacherId = ${teacherSession.id}
+               OR EXISTS (SELECT 1 FROM "TeacherStudent" ts2 WHERE ts2.studentId = member.id AND ts2.teacherId = ${teacherSession.id})
+             )
            )
       `;
       matchingIds = rows.map((r) => r.id);
@@ -98,7 +102,14 @@ export async function GET(request: NextRequest) {
           ? {
               responses: {
                 ...(teacherSession && !teacherSession.isSuperAdmin
-                  ? { where: { student: { teacherId: teacherSession.id } } }
+                  ? {
+                      where: {
+                        OR: [
+                          { student: { teacherId: teacherSession.id } },
+                          { student: { teacherStudents: { some: { teacherId: teacherSession.id } } } },
+                        ],
+                      },
+                    }
                   : {}),
                 include: { student: { select: { id: true, email: true, name: true } } },
               },

@@ -103,12 +103,16 @@ export async function GET(request: NextRequest) {
             LEFT JOIN "Student" s ON s.id = sl.studentId
             LEFT JOIN "Group"   g ON g.id = sl.groupId
             WHERE s.teacherId = ${teacher.id}
+               OR EXISTS (SELECT 1 FROM "TeacherStudent" ts WHERE ts.studentId = sl.studentId AND ts.teacherId = ${teacher.id})
                OR g.teacherId = ${teacher.id}
                OR EXISTS (
                  SELECT 1
                  FROM "StudentGroup" sg2
                  JOIN "Student" s2 ON s2.id = sg2.studentId
-                 WHERE sg2.groupId = sl.groupId AND s2.teacherId = ${teacher.id}
+                 WHERE sg2.groupId = sl.groupId AND (
+                   s2.teacherId = ${teacher.id}
+                   OR EXISTS (SELECT 1 FROM "TeacherStudent" ts2 WHERE ts2.studentId = s2.id AND ts2.teacherId = ${teacher.id})
+                 )
                )
             ORDER BY sl.startAt ASC
           `;
@@ -132,8 +136,12 @@ export async function GET(request: NextRequest) {
             `SELECT sg.groupId, sg.studentId, s.name AS studentName, s.email AS studentEmail
              FROM "StudentGroup" sg
              JOIN "Student" s ON s.id = sg.studentId
-             WHERE sg.groupId IN (${placeholders}) AND s.teacherId = ?`,
+             WHERE sg.groupId IN (${placeholders})
+               AND (s.teacherId = ? OR EXISTS (
+                 SELECT 1 FROM "TeacherStudent" ts WHERE ts.studentId = s.id AND ts.teacherId = ?
+               ))`,
             ...groupIds,
+            teacher.id,
             teacher.id
           );
         }

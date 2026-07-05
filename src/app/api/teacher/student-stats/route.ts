@@ -11,8 +11,15 @@ export async function GET() {
 
   const now = new Date();
 
-  // Super-admins see all students; regular teachers see only their own
-  const studentFilter = teacher.isSuperAdmin ? {} : { teacherId: teacher.id };
+  // Super-admins see all students; regular teachers see only theirs (primary or multi-teacher)
+  const studentFilter = teacher.isSuperAdmin
+    ? {}
+    : {
+        OR: [
+          { teacherId: teacher.id },
+          { teacherStudents: { some: { teacherId: teacher.id } } },
+        ],
+      };
 
   const students = await prisma.student.findMany({
     where: studentFilter,

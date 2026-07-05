@@ -102,12 +102,16 @@ export async function teacherCanAccessStudent(
     where: { id: studentId },
     select: {
       teacherId: true,
+      teacherStudents: { select: { teacherId: true } },
       groups: { select: { group: { select: { teacherId: true } } } },
     },
   });
   if (!student) return false;
+  // Primary legacy teacherId check
   if (student.teacherId === teacher.id) return true;
-  // Also allow if the student is in a group assigned to this teacher
+  // Multi-teacher join table check
+  if (student.teacherStudents.some((ts) => ts.teacherId === teacher.id)) return true;
+  // Group affiliation check
   return student.groups.some((sg) => sg.group.teacherId === teacher.id);
 }
 

@@ -16,9 +16,10 @@ model Student {
   paymentCents        Int?                  // 1-99, permanent unique ID kopecks for any-bank matching
   lessonPrice         Int?
   level               String?              // CEFR level set by teacher: "A1" "A2" "B1" "B2" "C1" "C2"
-  teacherId           String?
+  teacherId           String?              // legacy primary teacher; use TeacherStudent for multi-teacher
   createdAt           DateTime              @default(now())
   teacher             Teacher?              @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  teacherStudents     TeacherStudent[]
   homework            Homework[]
   homeworkReminders   HomeworkReminder[]
   paymentInfos        PaymentInfo[]
@@ -134,6 +135,17 @@ model Teacher {
   groups       Group[]
   studentInvites Invite[] @relation("StudentInvitesCreatedBy")
   teacherInvitesCreated TeacherInvite[] @relation("TeacherInvitesCreatedBy")
+  teacherStudents TeacherStudent[]
+}
+
+// Many-to-many: a student can have multiple teachers
+model TeacherStudent {
+  teacherId  String
+  studentId  String
+  createdAt  DateTime @default(now())
+  teacher    Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  @@id([teacherId, studentId])
 }
 
 model TeacherInvite {

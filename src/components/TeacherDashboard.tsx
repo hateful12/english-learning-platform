@@ -28,6 +28,7 @@ type Student = {
   level?: string | null;
   teacherId?: string | null;
   teacher?: { id: string; email: string } | null;
+  teacherStudents?: { teacher: { id: string; email: string } }[];
   createdAt?: string;
 };
 type HomeworkResponse = {
@@ -1125,12 +1126,16 @@ function StudentRow({
     onUpdate();
   }
 
-  async function setTeacher(teacherId: string) {
+  async function toggleTeacher(teacherId: string) {
+    const current = (student.teacherStudents ?? []).map((ts) => ts.teacher.id);
+    const next = current.includes(teacherId)
+      ? current.filter((id) => id !== teacherId)
+      : [...current, teacherId];
     setSavingTeacher(true);
     await fetch("/api/students", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: student.id, teacherId: teacherId || null }),
+      body: JSON.stringify({ id: student.id, teacherIds: next }),
     });
     setSavingTeacher(false);
     onUpdate();
@@ -1213,22 +1218,28 @@ function StudentRow({
         </div>
 
         {canManagePayments && (
-          <div className="flex items-center gap-1">
-            <select
-              value={student.teacherId ?? ""}
-              disabled={savingTeacher}
-              onChange={(e) => setTeacher(e.target.value)}
-              className="text-xs text-ink/50 border border-dashed border-ink/20 rounded px-1.5 py-0.5 bg-transparent hover:border-ink/40 transition-colors cursor-pointer disabled:opacity-50"
-              title="Assign teacher"
-            >
-              <option value="">No teacher</option>
-              {teachers.map((teacher) => (
-                <option key={teacher.id} value={teacher.id}>
-                  {teacher.role === "super-admin" ? "Super-admin" : "Teacher"}: {teacher.email}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center gap-1">
             {savingTeacher && <span className="text-xs text-ink/40">…</span>}
+            {teachers.map((t) => {
+              const assigned = (student.teacherStudents ?? []).some((ts) => ts.teacher.id === t.id);
+              const label = t.email.split("@")[0];
+              return (
+                <button
+                  key={t.id}
+                  disabled={savingTeacher}
+                  onClick={() => toggleTeacher(t.id)}
+                  title={`${assigned ? "Remove" : "Add"} teacher: ${t.email}`}
+                  className={[
+                    "text-xs rounded px-1.5 py-0.5 border transition-colors disabled:opacity-50",
+                    assigned
+                      ? "bg-accent/10 border-accent text-accent font-medium"
+                      : "border-dashed border-ink/20 text-ink/40 hover:border-ink/40",
+                  ].join(" ")}
+                >
+                  {assigned ? "✓ " : ""}{label}
+                </button>
+              );
+            })}
           </div>
         )}
 
