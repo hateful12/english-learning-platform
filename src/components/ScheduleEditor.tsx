@@ -934,7 +934,7 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
                             type="button"
                             disabled={togglingPaid}
                             onClick={() => handleTogglePaid(lesson.id, false, {
-                              amount: markPaidAmount ? Math.round(Number(markPaidAmount) * 100) : undefined,
+                              amount: markPaidAmount ? Number(markPaidAmount) : undefined,
                               date: markPaidDate || undefined,
                             })}
                             className="btn-primary text-xs py-1 px-2 disabled:opacity-50"
@@ -1040,7 +1040,7 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
                             disabled={togglingPaid}
                             onClick={() => handleTogglePaid(lesson.id, false, {
                               studentId: markPaidStudentId,
-                              amount: markPaidAmount ? Math.round(Number(markPaidAmount) * 100) : undefined,
+                              amount: markPaidAmount ? Number(markPaidAmount) : undefined,
                               date: markPaidDate || undefined,
                             })}
                             className="btn-primary text-xs py-1 px-2 disabled:opacity-50"

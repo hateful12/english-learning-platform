@@ -2,6 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getTeacherSession } from "@/lib/auth";
 
+async function resolveStudentLessonPrice(studentId: string) {
+  const studentData = await prisma.student.findUnique({
+    where: { id: studentId },
+    select: {
+      lessonPrice: true,
+      groups: { select: { group: { select: { id: true, lessonPrice: true } } } },
+    },
+  });
+  const groupPrice = studentData?.groups.map((g) => g.group.lessonPrice).find((p) => p != null) ?? null;
+  const globalSetting = await prisma.settings.findUnique({ where: { key: "lesson_price" } });
+  const globalPrice = globalSetting ? parseInt(globalSetting.value, 10) : 0;
+  const lessonPrice = studentData?.lessonPrice ?? groupPrice ?? globalPrice;
+  return { lessonPrice, studentData };
+}
+
+/** Amount is in hryvnias (UAH). Returns kopecks and how many lessons that covers. */
+function paymentFromAmountHryvnias(amountHryvnias: number, lessonPriceKopecks: number) {
+  const amountKopecks = Math.round(amountHryvnias * 100);
+  const lessonsCount =
+    lessonPriceKopecks > 0 && amountKopecks > 0
+      ? Math.max(1, Math.floor(amountKopecks / lessonPriceKopecks))
+      : 1;
+  return { amountKopecks, lessonsCount };
+}
+
 export async function GET() {
   const teacher = await getTeacherSession();
   if (!teacher?.isSuperAdmin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -39,7 +64,8 @@ export async function PATCH(request: NextRequest) {
     const lesson = await prisma.scheduledLesson.findUnique({ where: { id: lessonId } });
     if (!lesson) return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
 
-    const paidAmount = typeof amount === "number" && amount > 0 ? amount : 0;
+    const amountHryvnias =
+      typeof amount === "number" && amount > 0 ? amount : parseFloat(String(amount ?? "0")) || 0;
     const receivedAt = typeof paidAt === "string" && paidAt ? new Date(paidAt) : new Date();
 
     // GROUP LESSON — track per student via GroupLessonPayment
@@ -47,64 +73,81 @@ export async function PATCH(request: NextRequest) {
       const sId = typeof studentId === "string" ? studentId : null;
       if (!sId) return NextResponse.json({ error: "studentId required for group lessons" }, { status: 400 });
 
+      const { lessonPrice } = await resolveStudentLessonPrice(sId);
+      const { amountKopecks, lessonsCount } = paymentFromAmountHryvnias(amountHryvnias, lessonPrice);
+
       const existing = await prisma.groupLessonPayment.findUnique({
         where: { studentId_lessonId: { studentId: sId, lessonId } },
       });
 
-      if (existing?.paymentId) {
-        // Already linked to a payment — just flip flag
-        await prisma.groupLessonPayment.update({
-          where: { studentId_lessonId: { studentId: sId, lessonId } },
-          data: { isPaid: true },
-        });
-      } else {
-        // Create a manual payment and link it
+      let paymentId = existing?.paymentId ?? null;
+
+      if (!paymentId) {
         const payment = await prisma.payment.create({
           data: {
             studentId: sId,
             monoId: `manual_glp_${lessonId}_${sId}_${Date.now()}`,
-            amount: paidAmount,
-            lessonsCount: 1,
+            amount: amountKopecks > 0 ? amountKopecks : 0,
+            lessonsCount,
             comment: "Manually marked as paid by teacher",
             receivedAt,
           },
         });
-        await prisma.groupLessonPayment.upsert({
-          where: { studentId_lessonId: { studentId: sId, lessonId } },
-          update: { isPaid: true, paymentId: payment.id },
-          create: { studentId: sId, lessonId, isPaid: true, paymentId: payment.id },
+        paymentId = payment.id;
+      } else if (amountHryvnias > 0) {
+        await prisma.payment.update({
+          where: { id: paymentId },
+          data: { amount: amountKopecks, lessonsCount, receivedAt },
         });
       }
-      return NextResponse.json({ ok: true });
+
+      await prisma.groupLessonPayment.upsert({
+        where: { studentId_lessonId: { studentId: sId, lessonId } },
+        update: { isPaid: true, paymentId },
+        create: { studentId: sId, lessonId, isPaid: true, paymentId },
+      });
+
+      if (lessonsCount > 1) {
+        const extraLessons = await prisma.scheduledLesson.findMany({
+          where: {
+            groupId: lesson.groupId,
+            id: { not: lessonId },
+            startAt: { gte: lesson.startAt },
+          },
+          orderBy: { startAt: "asc" },
+        });
+        let marked = 1;
+        for (const extra of extraLessons) {
+          if (marked >= lessonsCount) break;
+          const glp = await prisma.groupLessonPayment.findUnique({
+            where: { studentId_lessonId: { studentId: sId, lessonId: extra.id } },
+          });
+          if (glp?.isPaid) continue;
+          await prisma.groupLessonPayment.upsert({
+            where: { studentId_lessonId: { studentId: sId, lessonId: extra.id } },
+            update: { isPaid: true, paymentId },
+            create: { studentId: sId, lessonId: extra.id, isPaid: true, paymentId },
+          });
+          marked++;
+        }
+      }
+
+      return NextResponse.json({ ok: true, lessonsMarked: lessonsCount });
     }
 
     // INDIVIDUAL LESSON — mark this lesson + additional if amount covers multiple
     const sId = typeof studentId === "string" ? studentId : lesson.studentId;
     if (!sId) return NextResponse.json({ error: "No student associated" }, { status: 400 });
 
-    // Resolve lesson price to calculate how many lessons the amount covers
-    const studentData = await prisma.student.findUnique({
-      where: { id: sId },
-      select: {
-        lessonPrice: true,
-        groups: { select: { group: { select: { id: true, lessonPrice: true } } } },
-      },
-    });
-    const groupPrice = studentData?.groups.map((g) => g.group.lessonPrice).find((p) => p != null) ?? null;
-    const globalSetting = await prisma.settings.findUnique({ where: { key: "lesson_price" } });
-    const globalPrice = globalSetting ? parseInt(globalSetting.value, 10) : 0;
-    const lessonPrice = studentData?.lessonPrice ?? groupPrice ?? globalPrice;
-    const paidAmountKopecks = Math.round(paidAmount * 100);
-    const lessonsCount = lessonPrice > 0 && paidAmountKopecks > 0
-      ? Math.floor(paidAmountKopecks / lessonPrice)
-      : 1;
+    const { lessonPrice } = await resolveStudentLessonPrice(sId);
+    const { amountKopecks, lessonsCount } = paymentFromAmountHryvnias(amountHryvnias, lessonPrice);
 
     if (!lesson.paymentId) {
       const payment = await prisma.payment.create({
         data: {
           studentId: sId,
           monoId: `manual_${lessonId}_${Date.now()}`,
-          amount: paidAmountKopecks > 0 ? paidAmountKopecks : paidAmount,
+          amount: amountKopecks > 0 ? amountKopecks : 0,
           lessonsCount,
           comment: "Manually marked as paid by teacher",
           receivedAt,
@@ -114,7 +157,6 @@ export async function PATCH(request: NextRequest) {
         where: { id: lessonId },
         data: { isPaid: true, paymentId: payment.id },
       });
-      // Mark additional future lessons if lessonsCount > 1
       if (lessonsCount > 1) {
         const extraLessons = await prisma.scheduledLesson.findMany({
           where: {
@@ -134,9 +176,12 @@ export async function PATCH(request: NextRequest) {
         }
       }
     } else {
-      if (paidAmount > 0 || paidAt) {
-        const updateData: { amount?: number; receivedAt?: Date } = {};
-        if (paidAmountKopecks > 0) updateData.amount = paidAmountKopecks;
+      if (amountHryvnias > 0 || paidAt) {
+        const updateData: { amount?: number; lessonsCount?: number; receivedAt?: Date } = {};
+        if (amountKopecks > 0) {
+          updateData.amount = amountKopecks;
+          updateData.lessonsCount = lessonsCount;
+        }
         if (paidAt) updateData.receivedAt = receivedAt;
         await prisma.payment.update({
           where: { id: lesson.paymentId },
@@ -296,23 +341,11 @@ export async function PATCH(request: NextRequest) {
     if (!amountHryvnias || amountHryvnias <= 0) {
       return NextResponse.json({ error: "amount must be > 0" }, { status: 400 });
     }
-    const amountKopecks = Math.round(amountHryvnias * 100);
     const receivedAt = rawDate && typeof rawDate === "string" ? new Date(rawDate) : new Date();
     const comment = typeof note === "string" && note.trim() ? note.trim() : "Manual payment";
 
-    // Resolve lesson price for this student
-    const studentData = await prisma.student.findUnique({
-      where: { id: sId },
-      select: {
-        lessonPrice: true,
-        groups: { select: { group: { select: { id: true, lessonPrice: true } } } },
-      },
-    });
-    const groupPrice = studentData?.groups.map((g) => g.group.lessonPrice).find((p) => p != null) ?? null;
-    const globalSetting = await prisma.settings.findUnique({ where: { key: "lesson_price" } });
-    const globalPrice = globalSetting ? parseInt(globalSetting.value, 10) : 0;
-    const lessonPrice = studentData?.lessonPrice ?? groupPrice ?? globalPrice;
-    const lessonsCount = lessonPrice > 0 ? Math.floor(amountKopecks / lessonPrice) : 1;
+    const { lessonPrice, studentData } = await resolveStudentLessonPrice(sId);
+    const { amountKopecks, lessonsCount } = paymentFromAmountHryvnias(amountHryvnias, lessonPrice);
 
     const payment = await prisma.payment.create({
       data: {
