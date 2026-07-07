@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Calendar, dateFnsLocalizer, SlotInfo, View } from "react-big-calendar";
 import withDragAndDrop, { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop";
 import { format, parse, startOfWeek, getDay } from "date-fns";
@@ -58,7 +58,7 @@ function defaultColorForKey(key: string): string {
 }
 
 type Student = { id: string; email: string; name: string | null };
-type Group = { id: string; name: string };
+type Group = { id: string; name: string; students?: Student[] };
 
 type GroupPayment = {
   studentId: string;
@@ -145,6 +145,7 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
   const [markPaidStudentId, setMarkPaidStudentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [colorMap, setColorMap] = useState<Record<string, string>>({});
+  const [filterStudentId, setFilterStudentId] = useState("");
 
   // ── Drag-drop confirmation state ──────────────────────────────────────────
   type DragConfirm = {
@@ -300,7 +301,25 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
     fetchLessons();
   }, [fetchLessons]);
 
-  const events: CalendarEvent[] = lessons.map((l) => {
+  function lessonMatchesStudent(l: ScheduledLesson, studentId: string): boolean {
+    if (l.studentId === studentId) return true;
+    if (l.groupPayments?.some((gp) => gp.studentId === studentId)) return true;
+    if (l.groupId) {
+      const group = groups.find((g) => g.id === l.groupId);
+      if (group?.students?.some((s) => s.id === studentId)) return true;
+    }
+    return false;
+  }
+
+  const filteredLessons = useMemo(
+    () =>
+      filterStudentId
+        ? lessons.filter((l) => lessonMatchesStudent(l, filterStudentId))
+        : lessons,
+    [lessons, filterStudentId, groups]
+  );
+
+  const events: CalendarEvent[] = filteredLessons.map((l) => {
     const start = new Date(l.startAt);
     const end = new Date(start.getTime() + l.durationMin * 60 * 1000);
     return { id: l.id, title: l.title, start, end, resource: l };
@@ -618,9 +637,29 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
       `}</style>
 
       <div className="p-4">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
           <h2 className="text-lg font-semibold text-ink">Schedule</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={filterStudentId}
+              onChange={(e) => setFilterStudentId(e.target.value)}
+              className="input text-sm py-1.5 min-w-[160px]"
+              title="Filter calendar by student"
+            >
+              <option value="">All students</option>
+              {[...students]
+                .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name || s.email}
+                  </option>
+                ))}
+            </select>
+            {filterStudentId && (
+              <span className="text-xs text-ink/40">
+                {filteredLessons.length} lesson{filteredLessons.length === 1 ? "" : "s"}
+              </span>
+            )}
             <button
               onClick={openReschedule}
               className="btn-secondary text-sm px-3 py-1.5"
