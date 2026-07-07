@@ -17,6 +17,8 @@ model Student {
   lessonPrice         Int?
   level               String?              // CEFR level set by teacher: "A1" "A2" "B1" "B2" "C1" "C2"
   teacherId           String?              // legacy primary teacher; use TeacherStudent for multi-teacher
+  isPaused            Boolean              @default(false)
+  pausedAt            DateTime?
   createdAt           DateTime              @default(now())
   teacher             Teacher?              @relation(fields: [teacherId], references: [id], onDelete: SetNull)
   teacherStudents     TeacherStudent[]

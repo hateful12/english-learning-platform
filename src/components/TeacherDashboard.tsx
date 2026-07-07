@@ -29,6 +29,8 @@ type Student = {
   teacherId?: string | null;
   teacher?: { id: string; email: string } | null;
   teacherStudents?: { teacher: { id: string; email: string } }[];
+  isPaused?: boolean;
+  pausedAt?: string | null;
   createdAt?: string;
 };
 type HomeworkResponse = {
@@ -1133,6 +1135,32 @@ function StudentRow({
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordMsg, setPasswordMsg] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [togglingPause, setTogglingPause] = useState(false);
+
+  async function togglePause() {
+    const pausing = !student.isPaused;
+    const msg = pausing
+      ? `Поставити ${student.name || student.email} на паузу? Усі заняття будуть видалені з розкладу.`
+      : `Зняти ${student.name || student.email} з паузи? Розклад потрібно буде створити заново.`;
+    if (!window.confirm(msg)) return;
+
+    setTogglingPause(true);
+    try {
+      const res = await fetch("/api/students", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: student.id, paused: pausing }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert((data as { error?: string }).error ?? "Could not update pause status");
+        return;
+      }
+      onUpdate();
+    } finally {
+      setTogglingPause(false);
+    }
+  }
 
   async function deleteStudent() {
     if (
@@ -1229,7 +1257,14 @@ function StudentRow({
     <li className="flex flex-col w-full">
       <div className="flex items-center justify-between gap-3 py-3 flex-wrap">
       <div className="min-w-0">
-        {student.name && <p className="font-medium text-ink truncate">{student.name}</p>}
+        <div className="flex items-center gap-2 flex-wrap">
+          {student.name && <p className="font-medium text-ink truncate">{student.name}</p>}
+          {student.isPaused && (
+            <span className="rounded-full bg-amber-100 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+              Paused
+            </span>
+          )}
+        </div>
         <p className={`text-sm truncate ${student.name ? "text-ink/50" : "font-medium text-ink"}`}>
           {student.email}
         </p>
@@ -1337,6 +1372,21 @@ function StudentRow({
             {new Date(student.createdAt).toLocaleDateString()}
           </span>
         )}
+
+        <button
+          type="button"
+          onClick={() => void togglePause()}
+          disabled={togglingPause}
+          className={[
+            "text-xs rounded px-2 py-0.5 border transition-colors disabled:opacity-50",
+            student.isPaused
+              ? "border-green-200 text-green-700 hover:bg-green-50"
+              : "border-amber-200 text-amber-700 hover:bg-amber-50",
+          ].join(" ")}
+          title={student.isPaused ? "Resume student and allow scheduling again" : "Pause student and remove all lessons from schedule"}
+        >
+          {togglingPause ? "…" : student.isPaused ? "Resume" : "Pause"}
+        </button>
 
         <button
           type="button"

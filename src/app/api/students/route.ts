@@ -16,6 +16,8 @@ const studentSelect = {
   teacherId: true,
   teacher: { select: { id: true, email: true } },
   teacherStudents: { select: { teacher: { select: { id: true, email: true } } } },
+  isPaused: true,
+  pausedAt: true,
   createdAt: true,
 } as const;
 
@@ -51,11 +53,45 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { id, lessonPrice, level, temporaryPassword, teacherId, teacherIds } = (body as Record<string, unknown>) ?? {};
+  const { id, lessonPrice, level, temporaryPassword, teacherId, teacherIds, paused } = (body as Record<string, unknown>) ?? {};
   if (typeof id !== "string") return NextResponse.json({ error: "id required" }, { status: 400 });
 
   if (!(await teacherCanAccessStudent(teacher, id))) {
     return NextResponse.json({ error: "Student not found" }, { status: 404 });
+  }
+
+  // Pause / resume — removes all schedule entries when pausing
+  if (paused !== undefined) {
+    if (typeof paused !== "boolean") {
+      return NextResponse.json({ error: "paused must be a boolean" }, { status: 400 });
+    }
+
+    let lessonsDeleted = 0;
+    let groupPaymentsDeleted = 0;
+
+    if (paused) {
+      const [individual, groupPayments] = await Promise.all([
+        prisma.scheduledLesson.deleteMany({ where: { studentId: id } }),
+        prisma.groupLessonPayment.deleteMany({ where: { studentId: id } }),
+      ]);
+      lessonsDeleted = individual.count;
+      groupPaymentsDeleted = groupPayments.count;
+    }
+
+    const updated = await prisma.student.update({
+      where: { id },
+      data: {
+        isPaused: paused,
+        pausedAt: paused ? new Date() : null,
+      },
+      select: studentSelect,
+    });
+
+    return NextResponse.json({
+      ...updated,
+      lessonsDeleted,
+      groupPaymentsDeleted,
+    });
   }
 
   const updateData: Record<string, unknown> = {};

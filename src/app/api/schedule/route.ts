@@ -335,6 +335,15 @@ export async function POST(request: NextRequest) {
       if (sId && !(await teacherCanAccessStudent(teacher, sId))) {
         return NextResponse.json({ error: "Student not found" }, { status: 404 });
       }
+      if (sId) {
+        const pausedStudent = await prisma.student.findUnique({
+          where: { id: sId },
+          select: { isPaused: true },
+        });
+        if (pausedStudent?.isPaused) {
+          return NextResponse.json({ error: "Student is paused — resume before scheduling" }, { status: 400 });
+        }
+      }
 
       const deleteFromIso = deleteFrom && typeof deleteFrom === "string"
         ? new Date(deleteFrom).toISOString()
@@ -401,6 +410,14 @@ export async function POST(request: NextRequest) {
           SELECT studentId FROM "StudentGroup" WHERE groupId = ${gId}
         `;
         groupMemberIds = members.map((m) => m.studentId);
+        if (groupMemberIds.length > 0) {
+          const pausedMembers = await prisma.student.findMany({
+            where: { id: { in: groupMemberIds }, isPaused: true },
+            select: { id: true },
+          });
+          const pausedSet = new Set(pausedMembers.map((p) => p.id));
+          groupMemberIds = groupMemberIds.filter((memberId) => !pausedSet.has(memberId));
+        }
       }
 
       const created: ReturnType<typeof formatLesson>[] = [];
@@ -450,8 +467,17 @@ export async function POST(request: NextRequest) {
     const sId = studentId && typeof studentId === "string" ? studentId : null;
     const gId = groupId && typeof groupId === "string" ? groupId : null;
 
-    if (sId && !(await teacherCanAccessStudent(teacher, sId))) {
+  if (sId && !(await teacherCanAccessStudent(teacher, sId))) {
       return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+    if (sId) {
+      const pausedStudent = await prisma.student.findUnique({
+        where: { id: sId },
+        select: { isPaused: true },
+      });
+      if (pausedStudent?.isPaused) {
+        return NextResponse.json({ error: "Student is paused — resume before scheduling" }, { status: 400 });
+      }
     }
     if (gId && !teacher.isSuperAdmin) {
       const accessRows = await prisma.$queryRaw<Array<{ ok: number }>>`
@@ -491,6 +517,14 @@ export async function POST(request: NextRequest) {
             WHERE sg.groupId = ${gId} AND s.teacherId = ${teacher.id}
           `;
       groupMemberIds = members.map((m) => m.studentId);
+      if (groupMemberIds.length > 0) {
+        const pausedMembers = await prisma.student.findMany({
+          where: { id: { in: groupMemberIds }, isPaused: true },
+          select: { id: true },
+        });
+        const pausedSet = new Set(pausedMembers.map((p) => p.id));
+        groupMemberIds = groupMemberIds.filter((memberId) => !pausedSet.has(memberId));
+      }
     }
 
     const created: ReturnType<typeof formatLesson>[] = [];
