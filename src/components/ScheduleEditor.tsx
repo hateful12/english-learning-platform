@@ -301,23 +301,18 @@ export function ScheduleEditor({ students, groups, canManagePayments }: Schedule
     fetchLessons();
   }, [fetchLessons]);
 
-  function lessonMatchesStudent(l: ScheduledLesson, studentId: string): boolean {
-    if (l.studentId === studentId) return true;
-    if (l.groupPayments?.some((gp) => gp.studentId === studentId)) return true;
-    if (l.groupId) {
-      const group = groups.find((g) => g.id === l.groupId);
-      if (group?.students?.some((s) => s.id === studentId)) return true;
-    }
-    return false;
-  }
-
-  const filteredLessons = useMemo(
-    () =>
-      filterStudentId
-        ? lessons.filter((l) => lessonMatchesStudent(l, filterStudentId))
-        : lessons,
-    [lessons, filterStudentId, groups]
-  );
+  const filteredLessons = useMemo(() => {
+    if (!filterStudentId) return lessons;
+    return lessons.filter((l) => {
+      if (l.studentId === filterStudentId) return true;
+      if (l.groupPayments?.some((gp) => gp.studentId === filterStudentId)) return true;
+      if (l.groupId) {
+        const group = groups.find((g) => g.id === l.groupId);
+        if (group?.students?.some((s) => s.id === filterStudentId)) return true;
+      }
+      return false;
+    });
+  }, [lessons, filterStudentId, groups]);
 
   const events: CalendarEvent[] = filteredLessons.map((l) => {
     const start = new Date(l.startAt);
